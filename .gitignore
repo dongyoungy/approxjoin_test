@@ -1,2 +1,4 @@
+.DS_Store
 *.mex*
+*.m~
 ./raw_data
