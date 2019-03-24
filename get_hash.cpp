@@ -18,10 +18,15 @@ public:
 //         checkArguments(outputs, inputs);
         FILE* mphf_fd = fopen("1M.keys.mph", "r");
         cmph_t* hash = cmph_load(mphf_fd);
-        std::string key = std::to_string((unsigned int)inputs[0][0]);
-        unsigned int id = cmph_search(hash, key.c_str(), (cmph_uint32)strlen(key.c_str()));
-        matlab::data::TypedArray<double> ans = factory.createArray<double>({ 1,1 });
-        ans[0][0] = id;
+        size_t n = inputs[0].getNumberOfElements();
+        matlab::data::TypedArray<double> ans = factory.createArray<double>({ 1,n });
+        for (size_t i = 0; i < n; ++i) {
+          std::string key = std::to_string((unsigned int)inputs[0][i]);
+          unsigned int id = cmph_search(hash, key.c_str(), (cmph_uint32)strlen(key.c_str()));
+          ans[0][i] = id;
+        }
+              
+        
         outputs[0] = std::move(ans);
     }
 
