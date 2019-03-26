@@ -2,3 +2,5 @@
 *.mex*
 *.m~
 ./raw_data
+./sample_data
+./preset_sample_data

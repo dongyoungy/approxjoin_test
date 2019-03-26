@@ -25,12 +25,18 @@ function data = generate_table_data(nRows, nKeys, dist, n)
   end
   
   % create joinkey_col1_col2 template first
+  % fixed to not use template since having key -> value depedency makes
+  % sum, avg cases too obvious
   records = [1:nKeys]';
-  value1 = round(normrnd(100, 25, [nKeys, 1]),1);
-  value2 = randi(100, nKeys, 1);
-  records = [records value1 value2];   
+  value1 = round(normrnd(100, 25, [nRows, 1]),1);
+  value2 = randi(100, nRows, 1);
+%   records = [records value1 value2];   
   
-  data = records(idx, :);
+  data = [];
+  data(:,1) = records(idx, 1);
+  data(:,2) = value1;
+  data(:,3) = value2;
+  
   writematrix(data, file);  
   return;
 end
