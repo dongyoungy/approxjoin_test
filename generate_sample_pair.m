@@ -171,7 +171,7 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
     
     D = (1 / e1 * e2) * (A1 + B1 + C1);
     
-    val = (A + B + C) / D;
+    val = sqrt((A - B + C) / D);
     
     p = min([1 max([e1 e2 val])]);
     fprintf("p = %f\n", p);
