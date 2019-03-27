@@ -43,8 +43,8 @@
 % calculate_agg(10000000, k, 'powerlaw', 'powerlaw', 'count', 1);
 
 % for k = [10000 100000 1000000 10000000]
-% for k = [10000000 1000000 100000]
-%   for sample_id = 1:10
+% for k = 10000000
+%   for sample_id = 21:100
 % 
 %     generate_sample_pair(10000000, k, 'uniform', 'uniform', 'count', sample_id);
 %     generate_sample_pair(10000000, k, 'uniform', 'normal', 'count', sample_id);
@@ -52,12 +52,14 @@
 %     generate_sample_pair(10000000, k, 'normal', 'normal', 'count', sample_id);
 %     generate_sample_pair(10000000, k, 'normal', 'powerlaw', 'count', sample_id);
 %     generate_sample_pair(10000000, k, 'powerlaw', 'powerlaw', 'count', sample_id);
+    
+    %%%% # rows = 10M, # keys = 10M, {Normal, Powerlaw}
 
 %     generate_sample_pair(10000000, k, 'uniform', 'uniform', 'sum', sample_id);
 %     generate_sample_pair(10000000, k, 'uniform', 'normal', 'sum', sample_id);
 %     generate_sample_pair(10000000, k, 'uniform', 'powerlaw', 'sum', sample_id);
 %     generate_sample_pair(10000000, k, 'normal', 'normal', 'sum', sample_id);
-%     generate_sample_pair(10000000, k, 'normal', 'powerlaw', 'sum', sample_id);
+    % generate_sample_pair(10000000, k, 'normal', 'powerlaw', 'sum', sample_id);
 %     generate_sample_pair(10000000, k, 'powerlaw', 'powerlaw', 'sum', sample_id);
 %     
 %     generate_sample_pair(10000000, k, 'uniform', 'uniform', 'avg', sample_id);
@@ -89,28 +91,46 @@ agg = {};
 agg{1} = 'count';
 agg{2} = 'sum';
 agg{3} = 'avg';
+
 % for k = [10000000 1000000 100000]
+% for k = 10000000
 %   for p = 1:6
-%     for s = 1:20
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'uniform', prob(p,1), prob(p,2), s); 
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'normal', prob(p,1), prob(p,2), s); 
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'powerlaw', prob(p,1), prob(p,2), s); 
-%       generate_preset_sample_pair(10000000, k, 'normal', 'normal', prob(p,1), prob(p,2), s); 
-%       generate_preset_sample_pair(10000000, k, 'normal', 'powerlaw', prob(p,1), prob(p,2), s); 
+%     for s = 21:100
+%       % generate_preset_sample_pair(10000000, k, 'uniform', 'uniform', prob(p,1), prob(p,2), s); 
+%       % generate_preset_sample_pair(10000000, k, 'uniform', 'normal', prob(p,1), prob(p,2), s); 
+%       % generate_preset_sample_pair(10000000, k, 'uniform', 'powerlaw', prob(p,1), prob(p,2), s); 
+%       % generate_preset_sample_pair(10000000, k, 'normal', 'normal', prob(p,1), prob(p,2), s); 
+% %       generate_preset_sample_pair(10000000, k, 'normal', 'powerlaw', prob(p,1), prob(p,2), s); 
 %       generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw', prob(p,1), prob(p,2), s); 
 %     end   
 %   end
 % end
 
 kvals = [10000000 1000000 100000];
-preset_result = {};
-for k = 1:3
+% preset_result = {};
+% for k = 1:3
+%   kval = kvals(k);
+%   for d = 1:6
+%     for p = 1:6
+%       for a = 1:3
+%         res = [];
+%         for s = 1:20
+%           [actual estimate] = calculate_preset_agg(10000000, kval, dist{d,1}, dist{d,2}, agg{a}, prob(p,1), prob(p,2), s);
+%           res(s) = estimate;
+%         end
+%         preset_result{k,d,p,a} = res;
+%       end
+%     end
+%   end
+% end
+
+for k = 1
   kval = kvals(k);
-  for d = 1:6
+  for d = 6
     for p = 1:6
-      for a = 1:3
+      for a = 1
         res = [];
-        for s = 1:20
+        for s = 1:100
           [actual estimate] = calculate_preset_agg(10000000, kval, dist{d,1}, dist{d,2}, agg{a}, prob(p,1), prob(p,2), s);
           res(s) = estimate;
         end
