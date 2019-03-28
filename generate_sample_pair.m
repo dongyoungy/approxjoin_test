@@ -49,6 +49,11 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
   keys = [1:nKeys]';
 
   % build a table for a_v,b_v,a_v^2,b_v^2
+  % a_v = a_v(:,2)
+  % a_v^2 = a_v(:,3)
+  % b_v = b_v(:,2)
+  % b_v^2 = b_v(:,3)
+  
   a = tabulate(T1(:,1));
   a_v = keys;
   a_v(a(:,1), 2) = a(a(:,1), 2);
