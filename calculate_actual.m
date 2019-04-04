@@ -25,28 +25,19 @@ function actual = calculate_actual(nRows, nKeys, leftDist, rightDist, aggFunc)
      T2 = readmatrix(rightFile);
      cache(rightFile) = T2;
    end
+
+    T1tab = tabulate(T1(:,1));
+    T2tab = tabulate(T2(:,1));
+
+    T1freq = [1:nKeys]';
+    T2freq = [1:nKeys]';
+
+    T1freq(T1tab(:,1), 2) = T1tab(T1tab(:,1), 2);
+    T2freq(T2tab(:,1), 2) = T2tab(T2tab(:,1), 2);
   
    if strcmp(aggFunc, 'count')
-     T1tab = tabulate(T1(:,1));
-     T2tab = tabulate(T2(:,1));
- 
-     T1freq = [1:nKeys]';
-     T2freq = [1:nKeys]';
-
-     T1freq(T1tab(:,1), 2) = T1tab(T1tab(:,1), 2);
-     T2freq(T2tab(:,1), 2) = T2tab(T2tab(:,1), 2);
-
      actual = sum(T1freq(:,2) .* T2freq(:,2));
    elseif strcmp(aggFunc, 'sum')
-     T1tab = tabulate(T1(:,1));
-     T2tab = tabulate(T2(:,1));
- 
-     T1freq = [1:nKeys]';
-     T2freq = [1:nKeys]';
-
-     T1freq(T1tab(:,1), 2) = T1tab(T1tab(:,1), 2);
-     T2freq(T2tab(:,1), 2) = T2tab(T2tab(:,1), 2);
-     
      key_mean = [leftFile '_mean'];
      key_gname = [leftFile '_gname'];
      if cache.isKey(key_mean) && cache.isKey(key_gname)
@@ -65,15 +56,6 @@ function actual = calculate_actual(nRows, nKeys, leftDist, rightDist, aggFunc)
      actual = sum(mu(:,2) .* T1freq(:,2) .* T2freq(:,2));
           
    elseif strcmp(aggFunc, 'avg')  
-     T1tab = tabulate(T1(:,1));
-     T2tab = tabulate(T2(:,1));
- 
-     T1freq = [1:nKeys]';
-     T2freq = [1:nKeys]';
-
-     T1freq(T1tab(:,1), 2) = T1tab(T1tab(:,1), 2);
-     T2freq(T2tab(:,1), 2) = T2tab(T2tab(:,1), 2);
-     
      key_mean = [leftFile '_mean'];
      key_gname = [leftFile '_gname'];
      if cache.isKey(key_mean) && cache.isKey(key_gname)
@@ -90,7 +72,7 @@ function actual = calculate_actual(nRows, nKeys, leftDist, rightDist, aggFunc)
      mu(grps, 2) = means;
      
      actual = sum(mu(:,2) .* T1freq(:,2) .* T2freq(:,2)) / sum(T1freq(:,2) .* T2freq(:,2));
-   else
+    else
      fprintf("Unsupported agg function: %s", aggFunc);
      return;
    end

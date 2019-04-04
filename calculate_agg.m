@@ -1,11 +1,36 @@
-function [actual, estimate, p1, q1, p2, q2] = calculate_agg(nRows, nKeys, leftDist, rightDist, aggFunc, sampleIdx)
+function [actual, estimate, p1, q1, p2, q2] = calculate_agg(nRows, nKeys, leftDist, rightDist, aggFunc, sampleIdx, isCentralized, useLeft)
+
+  if nargin < 7
+    isCentralized = true;
+  end
+
+  if nargin < 8
+    useLeft = true;
+  end
+
+  if isCentralized
+    folder = 'centralized';
+  else
+    folder = 'decentralized';
+  end
+
   leftFile = ['./raw_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_1.csv'];
   rightFile = ['./raw_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' rightDist '_2.csv'];
+
+  leftSampleDist = leftDist;
+  rightSampleDist = rightDist;
+
+  if ~isCentralized
+    if ~useLeft
+      leftSampleDist = rightDist;
+      rightSampleDist = leftDist;
+    end
+  end
   
-  leftSample = ['./sample_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s1_' num2str(sampleIdx) '.mat'];
-  rightSample = ['./sample_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s2_' num2str(sampleIdx) '.mat'];
+  leftSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftSampleDist '_' rightSampleDist '_' aggFunc '_s1_' num2str(sampleIdx) '.mat'];
+  rightSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftSampleDist '_' rightSampleDist '_' aggFunc '_s2_' num2str(sampleIdx) '.mat'];
   
-  fprintf("For {%d, %d, %s, %s, %s}:\n", nRows, nKeys, leftDist, rightDist, aggFunc);
+  fprintf("For {%d, %d, %s, %s, %s, %s, %s, %s}:\n", nRows, nKeys, leftDist, rightDist, leftSampleDist, rightSampleDist, aggFunc, folder);
   % calculate actual value
   actual = calculate_actual(nRows, nKeys, leftDist, rightDist, aggFunc);
   estimate = 0;

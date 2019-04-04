@@ -1,128 +1,135 @@
-k_val = [100000 1000000 10000000];
+% clearvars;
+% our_result = {};
+% dec_our_result = {};
+% preset_result = {};
 
-p1_count = {};
-p2_count = {};
-p3_count = {};
-p4_count = {};
-p5_count = {};
-p6_count = {};
+% init_cache;
 
-p1_sum = {};
-p2_sum = {};
-p3_sum = {};
-p4_sum = {};
-p5_sum = {};
-p6_sum = {};
+num_sample = 100;
+nRows = 10000000;
+kvals = [10000000 1000000 100000];
 
-p1_avg = {};
-p2_avg = {};
-p3_avg = {};
-p4_avg = {};
-p5_avg = {};
-p6_avg = {};
-% 
-% for k_idx = 3
-%   k = k_val(k_idx);
-%   for sample_id = 1:100
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'uniform', 'count', sample_id);
-    % a1_count(k_idx) = a;
-    % e1_count(k_idx, sample_id) = e;
-    % p1_count{k_idx} = [p1,q1,p2,q2];
-    
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'normal', 'count', sample_id);
-    % a2_count(k_idx) = a;
-    % e2_count(k_idx, sample_id) = e;
-    % p2_count{k_idx} = [p1,q1,p2,q2];
-    
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'powerlaw', 'count', sample_id);
-    % a3_count(k_idx) = a;
-    % e3_count(k_idx, sample_id) = e;
-    % p3_count{k_idx} = [p1,q1,p2,q2];
-    
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'normal', 'normal', 'count', sample_id);
-    % a4_count(k_idx) = a;
-    % e4_count(k_idx, sample_id) = e;
-    % p4_count{k_idx} = [p1,q1,p2,q2];
-    
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'normal', 'powerlaw', 'count', sample_id);
-    % a5_count(k_idx) = a;
-    % e5_count(k_idx, sample_id) = e;
-    % p5_count{k_idx} = [p1,q1,p2,q2];
-    
-%     [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'powerlaw', 'powerlaw', 'count', sample_id);
-%     a6_count(k_idx) = a;
-%     e6_count(k_idx, sample_id) = e;
-%     p6_count{k_idx} = [p1,q1,p2,q2];
+e1 = 0.01; e2 = 0.01;
+
+prob = []; % p,q pair
+prob(1,1:2) = [0.01 1];
+prob(2,1:2) = [0.015 0.666];
+prob(3,1:2) = [0.03 0.333];
+prob(4,1:2) = [0.333 0.03];
+prob(5,1:2) = [0.666 0.015];
+prob(6,1:2) = [1 0.01];
+
+dist = {};
+dist{1,1} = 'uniform'; dist{1,2} = 'uniform';
+dist{2,1} = 'uniform'; dist{2,2} = 'normal';
+dist{3,1} = 'uniform'; dist{3,2} = 'powerlaw';
+dist{4,1} = 'normal'; dist{4,2} = 'normal';
+dist{5,1} = 'normal'; dist{5,2} = 'powerlaw';
+dist{6,1} = 'powerlaw'; dist{6,2} = 'powerlaw';
+
+agg = {};
+agg{1} = 'count';
+agg{2} = 'sum';
+agg{3} = 'avg';
+
+% for k = 2
+%   kval = kvals(k);
+%   for d = 1:6
+%     for p = 1:6
+%       for a = 1:3
+%         res = [];
+%         for s = 1:num_sample
+%           [actual estimate] = calculate_preset_agg(nRows, kval, dist{d,1}, dist{d,2}, agg{a}, prob(p,1), prob(p,2), s);
+%           res(s) = estimate;
+%         end
+%         preset_result{k,d,p,a} = struct;
+%         preset_result{k,d,p,a}.nRows = nRows;
+%         preset_result{k,d,p,a}.nKeys = kval;
+%         preset_result{k,d,p,a}.dist1 = dist{d,1};
+%         preset_result{k,d,p,a}.dist2 = dist{d,2};
+%         preset_result{k,d,p,a}.e1 = e1;
+%         preset_result{k,d,p,a}.e2 = e2;
+%         preset_result{k,d,p,a}.p1 = prob(p,1);
+%         preset_result{k,d,p,a}.p2 = prob(p,1);
+%         preset_result{k,d,p,a}.q1 = prob(p,2);
+%         preset_result{k,d,p,a}.q2 = prob(p,2);
+%         preset_result{k,d,p,a}.results = res;
+%         preset_result{k,d,p,a}.actual = actual;
+%         preset_result{k,d,p,a}.mean = mean(res);
+%         preset_result{k,d,p,a}.var = var(res);
+%         preset_result{k,d,p,a}.vmr = var(res)/mean(res);
+%         preset_result{k,d,p,a}.estimated_var = estimate_variance(nRows, kval, dist{d,1}, dist{d,2}, agg{a}, e1, e2, prob(p,1));
+%       end
+%     end
 %   end
 % end
+% save(sprintf("./test_results/preset_result - %s.mat", datestr(datetime('now'))), 'preset_result')
 
-
-% for k_idx = 3
-%   k = k_val(k_idx);
-%   for sample_id = 1:100
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'uniform', 'sum', sample_id);
-    % a1_sum(k_idx) = a;
-    % e1_sum(k_idx, sample_id) = e;
-    % p1_sum{k_idx} = [p1,q1,p2,q2];
-    
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'normal', 'sum', sample_id);
-    % a2_sum(k_idx) = a;
-    % e2_sum(k_idx, sample_id) = e;
-    % p2_sum{k_idx} = [p1,q1,p2,q2];
-    
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'powerlaw', 'sum', sample_id);
-    % a3_sum(k_idx) = a;
-    % e3_sum(k_idx, sample_id) = e;
-    % p3_sum{k_idx} = [p1,q1,p2,q2];
-    
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'normal', 'normal', 'sum', sample_id);
-    % a4_sum(k_idx) = a;
-    % e4_sum(k_idx, sample_id) = e;
-    % p4_sum{k_idx} = [p1,q1,p2,q2];
-    
-%     [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'normal', 'powerlaw', 'sum', sample_id);
-%     a5_sum(k_idx) = a;
-%     e5_sum(k_idx, sample_id) = e;
-%     p5_sum{k_idx} = [p1,q1,p2,q2];
-    
-    % [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'powerlaw', 'powerlaw', 'sum', sample_id);
-    % a6_sum(k_idx) = a;
-    % e6_sum(k_idx, sample_id) = e;
-    % p6_sum{k_idx} = [p1,q1,p2,q2];
+% for k = 2
+%   kval = kvals(k);
+%   for d = 1:6
+%     for a = 1:3
+%       res = [];
+%       for s = 1:num_sample
+%         [actual, estimate, p1, q1, p2, q2] = calculate_agg(nRows, kval, dist{d, 1}, dist{d, 2}, agg{a}, s);
+%         res(s) = estimate;
+%       end
+%       our_result{k, d, a} = struct;
+%       our_result{k, d, a}.nRows = nRows;
+%       our_result{k, d, a}.nKeys = kval;
+%       our_result{k, d, a}.dist1 = dist{d, 1};
+%       our_result{k, d, a}.dist2 = dist{d, 2};
+%       our_result{k, d, a}.e1 = e1;
+%       our_result{k, d, a}.e2 = e2;
+%       our_result{k, d, a}.p1 = p1;
+%       our_result{k, d, a}.p2 = p2;
+%       our_result{k, d, a}.q1 = q1;
+%       our_result{k, d, a}.q2 = q2;
+%       our_result{k, d, a}.results = res;
+%       our_result{k, d, a}.actual = actual;
+%       our_result{k, d, a}.mean = mean(res);
+%       our_result{k, d, a}.var = var(res);
+%       our_result{k, d, a}.vmr = var(res) / mean(res);
+%       our_result{k, d, a}.estimated_var = estimate_variance(nRows, kval, dist{d, 1}, dist{d, 2}, agg{a}, e1, e2, p1);
+%     end
 %   end
 % end
+% save(sprintf("./test_results/our_result - %s.mat", datestr(datetime('now'))), 'our_result')
 
-for k_idx = 1:3
-  k = k_val(k_idx);
-  for sample_id = 1:20
-    [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'uniform', 'avg', sample_id);
-    a1_avg(k_idx) = a;
-    e1_avg(k_idx, sample_id) = e;
-    p1_avg{k_idx} = [p1,q1,p2,q2];
-    
-    [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'normal', 'avg', sample_id);
-    a2_avg(k_idx) = a;
-    e2_avg(k_idx, sample_id) = e;
-    p2_avg{k_idx} = [p1,q1,p2,q2];
-    
-    [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'uniform', 'powerlaw', 'avg', sample_id);
-    a3_avg(k_idx) = a;
-    e3_avg(k_idx, sample_id) = e;
-    p3_avg{k_idx} = [p1,q1,p2,q2];
-    
-    [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'normal', 'normal', 'avg', sample_id);
-    a4_avg(k_idx) = a;
-    e4_avg(k_idx, sample_id) = e;
-    p4_avg{k_idx} = [p1,q1,p2,q2];
-    
-    [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'normal', 'powerlaw', 'avg', sample_id);
-    a5_avg(k_idx) = a;
-    e5_avg(k_idx, sample_id) = e;
-    p5_avg{k_idx} = [p1,q1,p2,q2];
-    
-    [a,e,p1,q1,p2,q2] = calculate_agg(10000000, k, 'powerlaw', 'powerlaw', 'avg', sample_id);
-    a6_avg(k_idx) = a;
-    e6_avg(k_idx, sample_id) = e;
-    p6_avg{k_idx} = [p1,q1,p2,q2];
+for k = 1
+  kval = kvals(k);
+  for d = 1:6
+    for a = 1
+      for l = 1:2
+      if l == 1
+        useLeft = true;
+      else
+        useLeft = false;
+      end  
+      res = [];
+      for s = 1:num_sample
+        [actual, estimate, p1, q1, p2, q2] = calculate_agg(nRows, kval, dist{d, 1}, dist{d, 2}, agg{a}, s, false, useLeft);
+        res(s) = estimate;
+      end
+      dec_our_result{k, d, a, l} = struct;
+      dec_our_result{k, d, a, l}.nRows = nRows;
+      dec_our_result{k, d, a, l}.nKeys = kval;
+      dec_our_result{k, d, a, l}.dist1 = dist{d, 1};
+      dec_our_result{k, d, a, l}.dist2 = dist{d, 2};
+      dec_our_result{k, d, a, l}.e1 = e1;
+      dec_our_result{k, d, a, l}.e2 = e2;
+      dec_our_result{k, d, a, l}.p1 = p1;
+      dec_our_result{k, d, a, l}.p2 = p2;
+      dec_our_result{k, d, a, l}.q1 = q1;
+      dec_our_result{k, d, a, l}.q2 = q2;
+      dec_our_result{k, d, a, l}.results = res;
+      dec_our_result{k, d, a, l}.actual = actual;
+      dec_our_result{k, d, a, l}.mean = mean(res);
+      dec_our_result{k, d, a, l}.var = var(res);
+      dec_our_result{k, d, a, l}.vmr = var(res) / mean(res);
+      dec_our_result{k, d, a, l}.estimated_var = estimate_variance(nRows, kval, dist{d, 1}, dist{d, 2}, agg{a}, e1, e2, p1);
+      end
+    end
   end
 end
+save(sprintf("./test_results/dec_our_result - %s.mat", datestr(datetime('now'))), 'dec_our_result')

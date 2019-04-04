@@ -5,7 +5,7 @@ function [actual, estimate, p1, q1, p2, q2] = calculate_preset_agg(nRows, nKeys,
   leftSample = ['./preset_sample_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' num2str(p) '_' num2str(q) '_s1_' num2str(sampleIdx) '.mat'];
   rightSample = ['./preset_sample_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' num2str(p) '_' num2str(q) '_s2_' num2str(sampleIdx) '.mat'];
   
-  fprintf("For {%d, %d, %s, %s, %.3f, %.3f}:\n", nRows, nKeys, leftDist, rightDist, p, q);
+  fprintf("For {%d, %d, %s, %s, %s, %.3f, %.3f}:\n", nRows, nKeys, leftDist, rightDist, aggFunc, p, q);
   % calculate actual value
   actual = calculate_actual(nRows, nKeys, leftDist, rightDist, aggFunc);
   estimate = 0;
