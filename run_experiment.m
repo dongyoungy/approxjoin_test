@@ -96,7 +96,7 @@ agg{3} = 'avg';
 % end
 % save(sprintf("./test_results/our_result - %s.mat", datestr(datetime('now'))), 'our_result')
 
-for k = 1
+for k = 2
   kval = kvals(k);
   for d = 1:6
     for a = 1

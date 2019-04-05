@@ -42,14 +42,14 @@
 % calculate_agg(10000000, k, 'normal', 'powerlaw', 'count', 1);
 % calculate_agg(10000000, k, 'powerlaw', 'powerlaw', 'count', 1);
 
-for k = [10000000]
+for k = [1000000]
   for sample_id = 1:100
-    % generate_sample_pair(10000000, k, 'uniform', 'uniform', 'count', sample_id, false);
+    generate_sample_pair(10000000, k, 'uniform', 'uniform', 'count', sample_id, false);
     generate_sample_pair(10000000, k, 'uniform', 'normal', 'count', sample_id, false);
     generate_sample_pair(10000000, k, 'uniform', 'powerlaw', 'count', sample_id, false);
-    % generate_sample_pair(10000000, k, 'normal', 'normal', 'count', sample_id, false);
+    generate_sample_pair(10000000, k, 'normal', 'normal', 'count', sample_id, false);
     generate_sample_pair(10000000, k, 'normal', 'powerlaw', 'count', sample_id, false);
-    % generate_sample_pair(10000000, k, 'powerlaw', 'powerlaw', 'count', sample_id, false);
+    generate_sample_pair(10000000, k, 'powerlaw', 'powerlaw', 'count', sample_id, false);
 
     generate_sample_pair(10000000, k, 'normal', 'uniform', 'count', sample_id, false);
     generate_sample_pair(10000000, k, 'powerlaw', 'uniform', 'count', sample_id, false);

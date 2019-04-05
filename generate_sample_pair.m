@@ -286,20 +286,75 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
       eq = [h_p2(e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) - h_p2(e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2)), h_p(e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) - h_p(e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2)), h_const(e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) - h_const(e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))];
 
       r = roots(eq);
-      p1 = r(1);
-      p2 = r(2);
-      p3 = max(e1, e2);
-      p4 = 1;
+      if isempty(r)
+         % calculate first sum in the formula
+        sum1 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b^2);
 
-      v1 = max([h(p1, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p1, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
-      v2 = max([h(p2, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p2, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
+        % second sum
+        sum2 = sum(a_v(v1, 3) .* mu_v(v1, 2) .* n_b);
 
-      if v1 < v2
-        p = p1;
+        % third.. and so on
+        sum3 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b^2);
+
+        sum4 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b);
+
+        sum5 = sum(a_v(v1, 2) * n_b);
+
+        % calculate the value
+        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
+        val = sqrt(val);
+
+        p = min([1 max([e1 e2 val])])
       else
-        p = p2;
-      end
+        p1 = r(1);
+        p2 = r(2);
+        % calculate first sum in the formula
+        sum1 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b^2);
 
+        % second sum
+        sum2 = sum(a_v(v1, 3) .* mu_v(v1, 2) .* n_b);
+
+        % third.. and so on
+        sum3 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b^2);
+
+        sum4 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b);
+
+        sum5 = sum(a_v(v1, 2) * n_b);
+
+        % calculate the value
+        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
+        val = sqrt(val);
+
+        p3 = min([1 max([e1 e2 val])])
+
+        sum1 = sum(a_v(v2, 3) .* mu_v(v2, 3) .* n_b^2);
+        sum2 = sum(a_v(v2, 3) .* mu_v(v2, 2) .* n_b);
+        sum3 = sum(a_v(v2, 2) .* (mu_v(v2, 3) + var_v(v2, 2)) .* n_b^2);
+        sum4 = sum(a_v(v2, 2) .* (mu_v(v2, 3) + var_v(v2, 2)) .* n_b);
+        sum5 = sum(a_v(v2, 2) * n_b);
+        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
+        val = sqrt(val);
+
+        p4 = min([1 max([e1 e2 val])])
+
+        p5 = max(e1, e2);
+
+        pval = [p1; p2; p3; p4; p5];
+        pval(1,2) = max([h(p1, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p1, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
+        pval(2,2) = max([h(p2, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p2, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
+        pval(3,2) = max([h(p3, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p3, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
+        pval(4,2) = max([h(p4, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p4, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
+        pval(5,2) = max([h(p5, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p5, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
+
+        pval(find(~isreal(pval(:,1))), :) = [];
+        pval(find(pval(:,1) < max(e1, e2)), :) = [];
+
+        [m i] = min(pval(:,2));
+
+        p = pval(i,1);
+
+      end
+        
       fprintf("p = %f\n", p);
 
       q1 = e1 / p;
