@@ -1,4 +1,3 @@
-% generate data
 function data = generate_table_data(nRows, nKeys, dist, n)
   
   file = ['./raw_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' dist '_' num2str(n) '.csv'];
@@ -27,13 +26,17 @@ function data = generate_table_data(nRows, nKeys, dist, n)
   % create joinkey_col1_col2 template first
   % fixed to not use template since having key -> value depedency makes
   % sum, avg cases too obvious
-  records = [1:nKeys]';
   value1 = round(normrnd(100, 25, [nRows, 1]),1);
   value2 = randi(100, nRows, 1);
 %   records = [records value1 value2];   
+
+  % randomize keys
+  keyPermMap = [1:nKeys]';
+  keyPermMap(:,2) = randperm(nKeys)';
   
   data = [];
-  data(:,1) = records(idx, 1);
+%   data(:,1) = records(idx, 1);
+  data(:,1) = keyPermMap(idx(:,1), 2);
   data(:,2) = value1;
   data(:,3) = value2;
   
