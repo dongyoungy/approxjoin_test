@@ -65,7 +65,7 @@ function estimate = estimate_variance(nRows, nKeys, leftDist, rightDist, aggFunc
     v1 = (1/p - 1) * sum(a_v(:,3) .* b_v(:,3));
     v2 = (1/e2 - 1/p) * sum(a_v(:,3) .* b_v(:,2));
     v3 = (1/e1 - 1/p) * sum(a_v(:,2) .* b_v(:,3));
-    v4 = (p/(e1*e2) - 1/e1 - 1/e2 - 1/p) * sum(a_v(:,2) .* b_v(:,2));
+    v4 = (p/(e1*e2) - 1/e1 - 1/e2 + 1/p) * sum(a_v(:,2) .* b_v(:,2));
 
     estimate = v1 + v2 + v3 + v4;
   elseif strcmp(aggFunc, 'sum')
