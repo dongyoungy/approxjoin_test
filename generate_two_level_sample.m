@@ -134,8 +134,10 @@ function generate_two_level_sample(nRows, nKeys, leftDist, rightDist, budget, sa
   end
   
   % remove sentries
-  [ia, ib] = ismember(S1, S1_sentry, 'rows');
-  S1(ia, :) = [];
+  if ~isempty(S1)
+    [ia, ib] = ismember(S1, S1_sentry, 'rows');
+    S1(ia, :) = [];
+  end
   
    % Sample S2 = B
   p_map = p(T2(:,1));
@@ -171,9 +173,11 @@ function generate_two_level_sample(nRows, nKeys, leftDist, rightDist, budget, sa
     
   end
   % remove sentries
-  [ia, ib] = ismember(S2, S2_sentry, 'rows');
-  S2(ia, :) = [];
-
+  if ~isempty(S2)
+    [ia, ib] = ismember(S2, S2_sentry, 'rows');
+    S2(ia, :) = [];
+  end
+  
     % write sample files
   save(leftSample, 'S1', 'p', 'q', 'S1_c', 'budget');
   save(rightSample, 'S2', 'p', 'q', 'S2_c', 'budget');

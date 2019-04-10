@@ -137,7 +137,7 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
       
       sum4 = sum( a_v(:,2) .* (mu_v(:,3) + var_v(:,2)) .* b_v(:,2) );
       
-      sum5 = sum( a_star * b_v(:,2) );
+      sum5 = sum( a_v(:,2) .* (mu_v(:,3) + var_v(:,2)) .* b_v(:,2) );
       
       % calculate the value
       val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
