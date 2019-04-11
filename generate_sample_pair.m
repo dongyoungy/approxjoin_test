@@ -130,7 +130,7 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
       sum1 = sum( a_v(:,3) .* mu_v(:,3) .* b_v(:,3) );
       
       % second sum
-      sum2 = sum( a_v(:,3) .* mu_v(:,2) .* b_v(:,2) );
+      sum2 = sum( a_v(:,3) .* mu_v(:,3) .* b_v(:,2) );
       
       % third.. and so on
       sum3 = sum( a_v(:,2) .* (mu_v(:,3) + var_v(:,2)) .* b_v(:,3) );
