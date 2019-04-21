@@ -13,8 +13,22 @@ function data = generate_table_data(nRows, nKeys, dist, n)
     idx = randi(nKeys, nRows, 1);
   elseif strcmp(dist, 'normal')
     idx = round(nKeys/2+TruncatedGaussian(nKeys/5,[1 nKeys]-(nKeys/2),[1 nRows]))';
+  elseif strcmp(dist, 'normal1')
+    idx = round(nKeys/2+TruncatedGaussian(nKeys/10,[1 nKeys]-(nKeys/2),[1 nRows]))';
+  elseif strcmp(dist, 'normal2')
+    idx = round(nKeys/2+TruncatedGaussian(nKeys/20,[1 nKeys]-(nKeys/2),[1 nRows]))';
   elseif strcmp(dist, 'powerlaw')
     alpha = -2.5;
+    minv = 1;
+    maxv = nKeys;
+    idx = floor(((maxv^(alpha+1) - minv^(alpha+1))* rand(nRows, 1) + minv.^(alpha+1)).^(1/(alpha+1)));
+  elseif strcmp(dist, 'powerlaw1')
+    alpha = -1.5;
+    minv = 1;
+    maxv = nKeys;
+    idx = floor(((maxv^(alpha+1) - minv^(alpha+1))* rand(nRows, 1) + minv.^(alpha+1)).^(1/(alpha+1)));
+  elseif strcmp(dist, 'powerlaw2')
+    alpha = -3;
     minv = 1;
     maxv = nKeys;
     idx = floor(((maxv^(alpha+1) - minv^(alpha+1))* rand(nRows, 1) + minv.^(alpha+1)).^(1/(alpha+1)));

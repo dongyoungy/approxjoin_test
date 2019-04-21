@@ -221,7 +221,8 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
       a_star = max(a_v(:,2));
       n_b = nRows;
       sum1 = e1 * e2 * (a_star^2 * n_b^2 + a_star^2 * n_b + a_star * n_b^2 + a_star * n_b);
-      sum2 = nKeys * a_star * n_b;
+      % sum2 = nKeys * a_star * n_b; % removed nKeys
+      sum2 = a_star * n_b;
       val = sqrt(sum1 / sum2);
 
       p = min([1 max([e1 e2 val])]);
@@ -291,20 +292,20 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
         sum1 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b^2);
 
         % second sum
-        sum2 = sum(a_v(v1, 3) .* mu_v(v1, 2) .* n_b);
+        sum2 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b);
 
         % third.. and so on
         sum3 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b^2);
 
         sum4 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b);
 
-        sum5 = sum(a_v(v1, 2) * n_b);
+        sum5 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b);
 
         % calculate the value
         val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
         val = sqrt(val);
 
-        p = min([1 max([e1 e2 val])])
+        p = min([1 max([e1 e2 val])]);
       else
         p1 = r(1);
         p2 = r(2);
@@ -312,30 +313,30 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
         sum1 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b^2);
 
         % second sum
-        sum2 = sum(a_v(v1, 3) .* mu_v(v1, 2) .* n_b);
+        sum2 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b);
 
         % third.. and so on
         sum3 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b^2);
 
         sum4 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b);
 
-        sum5 = sum(a_v(v1, 2) * n_b);
+        sum5 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b);
 
         % calculate the value
         val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
         val = sqrt(val);
 
-        p3 = min([1 max([e1 e2 val])])
+        p3 = min([1 max([e1 e2 val])]);
 
         sum1 = sum(a_v(v2, 3) .* mu_v(v2, 3) .* n_b^2);
-        sum2 = sum(a_v(v2, 3) .* mu_v(v2, 2) .* n_b);
+        sum2 = sum(a_v(v2, 3) .* mu_v(v2, 3) .* n_b);
         sum3 = sum(a_v(v2, 2) .* (mu_v(v2, 3) + var_v(v2, 2)) .* n_b^2);
         sum4 = sum(a_v(v2, 2) .* (mu_v(v2, 3) + var_v(v2, 2)) .* n_b);
-        sum5 = sum(a_v(v2, 2) * n_b);
+        sum5 = sum(a_v(v2, 2) .* (mu_v(v2, 3) + var_v(v2, 2)) .* n_b);
         val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
         val = sqrt(val);
 
-        p4 = min([1 max([e1 e2 val])])
+        p4 = min([1 max([e1 e2 val])]);
 
         p5 = max(e1, e2);
 
@@ -360,7 +361,7 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
       q1 = e1 / p;
       q2 = e2 / p;
     else
-      fprintf("Unsupported agg function: %s", aggFunc);
+      fprintf("Unsupported agg function: %s\n", aggFunc);
       return;
     end
   end

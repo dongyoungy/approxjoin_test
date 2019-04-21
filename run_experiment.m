@@ -1,13 +1,12 @@
 % clearvars;
-% our_result = {};
-% dec_our_result = {};
-% preset_result = {};
+our_result = {};
+preset_result = {};
 
-% init_cache;
+init_cache;
 
-num_sample = 50;
+num_sample = 100;
 nRows = 10000000;
-kvals = [10000000 1000000 100000];
+kvals = [10000000 1000000];
 
 e1 = 0.01; e2 = 0.01;
 
@@ -19,22 +18,41 @@ prob(4,1:2) = [0.333 0.03];
 prob(5,1:2) = [0.666 0.015];
 prob(6,1:2) = [1 0.01];
 
+t1_dist = {'uniform', 'normal', 'powerlaw'};
+t2_dist = {'uniform', 'normal', 'normal1', 'normal2', 'powerlaw', 'powerlaw1', 'powerlaw2', 'uniform_max_var', 'normal_max_var', 'powerlaw_max_var'};
+num_t2_dist = size(t2_dist, 2);
+
 dist = {};
+
 dist{1,1} = 'uniform'; dist{1,2} = 'uniform';
 dist{2,1} = 'uniform'; dist{2,2} = 'normal';
 dist{3,1} = 'uniform'; dist{3,2} = 'powerlaw';
 dist{4,1} = 'normal'; dist{4,2} = 'normal';
 dist{5,1} = 'normal'; dist{5,2} = 'powerlaw';
-dist{6,1} = 'powerlaw'; dist{6,2} = 'powerlaw';
+% dist{6,1} = 'powerlaw'; dist{6,2} = 'powerlaw';
+% dist{7,1} = 'uniform'; dist{7,2} = 'uniform_max_var';
+% dist{8,1} = 'normal'; dist{8,2} = 'normal_max_var';
+% dist{9,1} = 'powerlaw'; dist{9,2} = 'powerlaw_max_var';
+num_dist = 5;
+
+% k=1;
+% for i = 1:t1_dist
+  % for j = 1:t2_dist
+    % dist{k, 1} = t1_dist{i};
+    % dist{k, 2} = t2_dist{j};
+    % k = k + 1;
+  % end
+% end
+% num_dist = k;
 
 agg = {};
 agg{1} = 'count';
 agg{2} = 'sum';
 agg{3} = 'avg';
-
-for k = 1
+% 
+for k = 1:1
   kval = kvals(k);
-  for d = 1:6
+  for d = 1:num_dist
     for p = 1:6
       for a = 1:3
         res = [];
@@ -66,9 +84,9 @@ for k = 1
 end
 save(sprintf("./test_results/preset_result - %s.mat", datestr(datetime('now'))), 'preset_result')
 
-for k = 1
+for k = 1:1
   kval = kvals(k);
-  for d = 1:6
+  for d = 1:num_dist
     for a = 1:3
       res = [];
       for s = 1:num_sample
@@ -97,41 +115,3 @@ for k = 1
   end
 end
 save(sprintf("./test_results/our_result - %s.mat", datestr(datetime('now'))), 'our_result')
-
-% for k = 1
-%   kval = kvals(k);
-%   for d = 1:6
-%     for a = 1
-%       for l = 1:2
-%       if l == 1
-%         useLeft = true;
-%       else
-%         useLeft = false;
-%       end  
-%       res = [];
-%       for s = 1:num_sample
-%         [actual, estimate, p1, q1, p2, q2] = calculate_agg(nRows, kval, dist{d, 1}, dist{d, 2}, agg{a}, s, false, useLeft);
-%         res(s) = estimate;
-%       end
-%       dec_our_result{k, d, a, l} = struct;
-%       dec_our_result{k, d, a, l}.nRows = nRows;
-%       dec_our_result{k, d, a, l}.nKeys = kval;
-%       dec_our_result{k, d, a, l}.dist1 = dist{d, 1};
-%       dec_our_result{k, d, a, l}.dist2 = dist{d, 2};
-%       dec_our_result{k, d, a, l}.e1 = e1;
-%       dec_our_result{k, d, a, l}.e2 = e2;
-%       dec_our_result{k, d, a, l}.p1 = p1;
-%       dec_our_result{k, d, a, l}.p2 = p2;
-%       dec_our_result{k, d, a, l}.q1 = q1;
-%       dec_our_result{k, d, a, l}.q2 = q2;
-%       dec_our_result{k, d, a, l}.results = res;
-%       dec_our_result{k, d, a, l}.actual = actual;
-%       dec_our_result{k, d, a, l}.mean = mean(res);
-%       dec_our_result{k, d, a, l}.var = var(res);
-%       dec_our_result{k, d, a, l}.vmr = var(res) / mean(res);
-%       dec_our_result{k, d, a, l}.estimated_var = estimate_variance(nRows, kval, dist{d, 1}, dist{d, 2}, agg{a}, e1, e2, p1);
-%       end
-%     end
-%   end
-% end
-% save(sprintf("./test_results/dec_our_result - %s.mat", datestr(datetime('now'))), 'dec_our_result')

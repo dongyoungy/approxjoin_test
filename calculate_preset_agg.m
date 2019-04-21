@@ -21,8 +21,13 @@ function [actual, estimate, p1, q1, p2, q2] = calculate_preset_agg(nRows, nKeys,
   p2 = S2Struct.p2;
   q2 = S2Struct.q2;
   
+  fprintf("actual = %.3f\n", actual);
+  if isempty(S2)
+    estimate = 0
+    return
+  end
+  
   if strcmp(aggFunc, 'count')
-    fprintf("actual = %d\n", actual);
     
     S1tab = tabulate(S1(:,1));
     S2tab = tabulate(S2(:,1));
@@ -63,7 +68,7 @@ function [actual, estimate, p1, q1, p2, q2] = calculate_preset_agg(nRows, nKeys,
     
     p = min(p1, p2);
     estimate = estimate * (1 / (p * q1 * q2));
-    fprintf("actual = %.3f\n", actual);
+    
     fprintf("estimate = %.3f\n", estimate);
     
     rel_diff = abs((estimate - actual) / actual);
@@ -91,7 +96,6 @@ function [actual, estimate, p1, q1, p2, q2] = calculate_preset_agg(nRows, nKeys,
     estimate_count = estimate_count * (1 / (p * q1 * q2));
     estimate = estimate_sum / estimate_count;
     
-    fprintf("actual = %.3f\n", actual);
     fprintf("estimate = %.3f\n", estimate);
     
     rel_diff = abs((estimate - actual) / actual);
