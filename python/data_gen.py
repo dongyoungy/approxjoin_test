@@ -4,56 +4,91 @@ import os
 import random
 import string
 import subprocess
-import time
 import threading
+import time
 
-import numpy as np
-import paramiko as pa
-import scipy.stats as ss
 import impala.dbapi as impaladb
+import numpy as np
+import scipy.stats as ss
+
+hdfs_dir = '/tmp/approxjoin'
+raw_data_path = './raw_data'
+text_schema = 'approxjoin_text'
+parquet_schema = 'approxjoin_parquet'
+impala_host = 'cp-2'
+impala_port = 21050
+
+
+# call this function to create table
+def create_table(num_rows, num_keys, type, n, overwrite=False):
+    (table_name, data_file) = create_table_data(num_rows, num_keys, type, n,
+                                                overwrite)
+    hdfs_path = hdfs_dir + '/' + table_name
+    load_data_to_hdfs(data_file, hdfs_path)
+    create_text_table(table_name, hdfs_path)
+    create_parquet_table(table_name)
+
+    # clear raw file at the end
+    if os.path.exists(data_file):
+        os.remove(data_file)
 
 
 def write_csv(writer, rows):
     writer.writerows(rows)
 
-def load_data_to_hdfs(data_path):
-    ssh = pa.SSHClient()
-    ssh.load_system_host_keys()
-    ssh.connect('cp-2')
 
+def load_data_to_hdfs(data_path, hdfs_path):
     # create dir first
+    subprocess.run(['hdfs', 'dfs', '-mkdir', '-p', hdfs_path])
+
+    # copy the local file to hdfs
+    subprocess.run(['hdfs', 'dfs', '-put', data_path, hdfs_path])
 
 
-
-
-def create_table(host, port, schema_name, table_name):
-    conn = impaladb.connect(host, port)
+def create_text_table(table_name, hdfs_path):
+    conn = impaladb.connect(impala_host, impala_port)
     cur = conn.cursor()
-    cursor.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(schema_name))
-    cursor.fetchall()
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(text_schema))
 
     create_text_sql = """CREATE EXTERNAL TABLE IF NOT EXISTS `{0}`.`{1}` (
-  `n_nationkey`  INT,
-  `n_name`       STRING,
-  `n_regionkey`  INT,
-  `n_comment`    STRING,
-  `n_dummy`      STRING)
-  ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
-  LOCATION '/tmp/tpch100g/nation';
-    """
+                      `col1`  BIGINT,
+                      `col2`  INT,
+                      `col3`  INT,
+                      `col4`  STRING)
+                      ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+                      LOCATION '{2}';
+                      """.format(text_schema, table_name, hdfs_path)
+
+    cur.execute(create_text_sql)
+
+
+def create_parquet_table(table_name):
+    conn = impaladb.connect(impala_host, impala_port)
+    cur = conn.cursor()
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(parquet_schema))
+
+    create_parquet_sql = """CREATE TABLE IF NOT EXISTS {0}.{2} STORED AS parquet AS
+    SELECT * FROM {1}.{2};
+    """.format(parquet_schema, text_schema, table_name)
+
+    cur.execute(create_parquet_sql)
+
+    compute_stat_sql = "COMPUTE STATS {0}.{1};".format(parquet_schema,
+                                                       table_name)
+
+    cur.execute(compute_stat_sql)
 
 
 def create_table_data(num_rows, num_keys, type, n, overwrite=False):
-    dir = './raw_data'
-    if not os.path.exists(dir):
-        os.makedirs(dir)
+    if not os.path.exists(raw_data_path):
+        os.makedirs(raw_data_path)
 
-    data_file = dir + '/' + "{0}n_{1}k_{2}_{3}.csv".format(
-        num_rows, num_keys, type, n)
+    table_name = "t_{0}n_{1}k_{2}_{3}".format(num_rows, num_keys, type, n)
+    data_file = raw_data_path + '/' + "{0}.csv".format(table_name)
 
     if os.path.exists(data_file) and not overwrite:
         print("Data file: '{0}' already exists".format(data_file))
-        return
+        return table_name, data_file
 
     delim = '|'
     remaining = num_rows
@@ -164,3 +199,5 @@ def create_table_data(num_rows, num_keys, type, n, overwrite=False):
 
     if write_thread is not None:
         write_thread.join()
+
+    return table_name, data_file
