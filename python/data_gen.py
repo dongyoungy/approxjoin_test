@@ -135,7 +135,7 @@ def create_table_data(num_rows, num_keys, type, n, overwrite=False):
             r = num_keys / 2
             scale = num_keys / 5
             keys = ss.truncnorm(a=(-r + 1) / scale, b=r / scale,
-                                scale=scale).rvs(num_rows)
+                                scale=scale).rvs(current_batch_size)
             keys = keys + r
             keys = keys.round().astype(int)
 
