@@ -55,9 +55,9 @@ agg{3} = 'avg';
 % calculate_agg(10000000, k, 'powerlaw', 'powerlaw', 'count', 1);
 
 isCentralized = false;
+sample_id=200;
 for k = [1000000]
-  for sample_id = 1:50
-    for a = 1
+    for a = 1:2
       generate_sample_pair(10000000, k, 'uniform', 'uniform', agg{a}, sample_id, isCentralized);
       generate_sample_pair(10000000, k, 'uniform', 'normal', agg{a}, sample_id, isCentralized);
       generate_sample_pair(10000000, k, 'uniform', 'normal1', agg{a}, sample_id, isCentralized);
@@ -114,7 +114,6 @@ for k = [1000000]
 %     generate_sample_pair(10000000, k, 'normal', 'powerlaw', 'avg', sample_id);
 %     generate_sample_pair(10000000, k, 'powerlaw', 'powerlaw', 'avg', sample_id);
 
-    end
   end
 end
 % 
@@ -149,40 +148,38 @@ agg = {};
 agg{1} = 'count';
 agg{2} = 'sum';
 agg{3} = 'avg';
+s=200;
+for k = [1000000]
+  for p = 1:6
+      generate_preset_sample_pair(10000000, k, 'uniform', 'uniform', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'uniform', 'normal', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'uniform', 'normal1', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'uniform', 'normal2', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'uniform', 'powerlaw', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'uniform', 'powerlaw1', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'uniform', 'powerlaw2', prob(p,1), prob(p,2), s);
 
-% for k = [1000000]
-%   for p = 1:6
-%     for s = 1:50
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'uniform', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'normal', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'normal1', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'normal2', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'powerlaw', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'powerlaw1', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'powerlaw2', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'normal', 'uniform', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'normal', 'normal', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'normal', 'normal1', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'normal', 'normal2', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'normal', 'powerlaw', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'normal', 'powerlaw1', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'normal', 'powerlaw2', prob(p,1), prob(p,2), s);
 
-%       generate_preset_sample_pair(10000000, k, 'normal', 'uniform', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'normal', 'normal', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'normal', 'normal1', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'normal', 'normal2', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'normal', 'powerlaw', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'normal', 'powerlaw1', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'normal', 'powerlaw2', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'powerlaw', 'uniform', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'powerlaw', 'normal', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'powerlaw', 'normal1', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'powerlaw', 'normal2', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw1', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw2', prob(p,1), prob(p,2), s);
 
-%       generate_preset_sample_pair(10000000, k, 'powerlaw', 'uniform', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'powerlaw', 'normal', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'powerlaw', 'normal1', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'powerlaw', 'normal2', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw1', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw2', prob(p,1), prob(p,2), s);
-
-%       generate_preset_sample_pair(10000000, k, 'uniform', 'uniform_max_var', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'normal', 'normal_max_var', prob(p,1), prob(p,2), s);
-%       generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw_max_var', prob(p,1), prob(p,2), s);
-%     end
-%   end
-% end
+      generate_preset_sample_pair(10000000, k, 'uniform', 'uniform_max_var', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'normal', 'normal_max_var', prob(p,1), prob(p,2), s);
+      generate_preset_sample_pair(10000000, k, 'powerlaw', 'powerlaw_max_var', prob(p,1), prob(p,2), s);
+  end
+end
 
 % for k = [10000000 1000000 100000]
 % for k = [10000000 1000000]

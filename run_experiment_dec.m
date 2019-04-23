@@ -6,7 +6,7 @@ init_cache;
 
 start_timestamp = datestr(datetime('now'));
 
-num_sample = 50;
+num_sample = 100;
 nRows = 10000000;
 kvals = [10000000 1000000];
 

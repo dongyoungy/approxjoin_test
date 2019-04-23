@@ -1,4 +1,4 @@
-function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sampleIdx, isCentralized)
+function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, num_sample, isCentralized)
 
   global cache;
 
@@ -15,9 +15,6 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
   leftFile = ['./raw_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_1.csv'];
   rightFile = ['./raw_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' rightDist '_2.csv'];
 
-  leftSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s1_' num2str(sampleIdx) '.mat'];
-  rightSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s2_' num2str(sampleIdx) '.mat'];
-  
   % check original datafile
   if ~isfile(leftFile)
     fprintf("Data file do not exist: %s", leftFile)
@@ -25,12 +22,6 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
   end
   if ~isfile(rightFile)
     fprintf("Data file do not exist: %s", rightFile)
-    return;
-  end
-  
-  % check whether sample file already exists
-  if isfile(leftSample) && isfile(rightSample)
-    fprintf("samples already exists.\n")
     return;
   end
   
@@ -47,10 +38,6 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
     T2 = readmatrix(rightFile);
     cache(rightFile) = T2;
   end
-  
-  % a pair must use same hash permutation
-  keyPermMap = [1:nKeys]';
-  keyPermMap(:,2) = randperm(nKeys)';
   
   % calculate sampling parameters for given data (p,q1,q2)
   
@@ -366,34 +353,46 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, sample
     end
   end
   
-  
-  % create sample pair
-  
-  % attach hash value as the last column
-  hash_col_idx = 4;
-%   T1(:, hash_col_idx) = get_hash(keyPermMap(T1(:,1),2));
-%   T2(:, hash_col_idx) = get_hash(keyPermMap(T2(:,1),2));
-  T1(:, hash_col_idx) = keyPermMap(T1(:,1),2);
-  T2(:, hash_col_idx) = keyPermMap(T2(:,1),2);
-  
-  % universe sampling first
-  S1 = T1(find(mod(T1(:,hash_col_idx), 100000) <= (p * 100000)), :);
-  S2 = T2(find(mod(T2(:,hash_col_idx), 100000) <= (p * 100000)), :);
-  
-  prob_col_idx = 5;
-  % attach rand column for uniform sampling
-  S1(:,prob_col_idx) = rand(size(S1,1), 1);
-  S2(:,prob_col_idx) = rand(size(S2,1), 1);
-  
-  % uniform sample
-  S1 = S1(find(S1(:,prob_col_idx) <= q1), [1:3]);
-  S2 = S2(find(S2(:,prob_col_idx) <= q2), [1:3]);
-  
-  p1 = p;
-  p2 = p;
-  
-  % write sample files
-  save(leftSample, 'S1', 'p1', 'q1');
-  save(rightSample, 'S2', 'p2', 'q2');
-  
+  % create 'num_sample' sample pairs
+  for sampleIdx = 1:num_sample
+    leftSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s1_' num2str(sampleIdx) '.mat'];
+    rightSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s2_' num2str(sampleIdx) '.mat'];
+
+    % check whether sample file already exists
+    if isfile(leftSample) && isfile(rightSample)
+      fprintf("samples already exists.\n")
+      continue;
+    end
+
+    % a pair must use same hash permutation
+    keyPermMap = [1:nKeys]';
+    keyPermMap(:,2) = randperm(nKeys)';
+    
+    % attach hash value as the last column
+    hash_col_idx = 4;
+  %   T1(:, hash_col_idx) = get_hash(keyPermMap(T1(:,1),2));
+  %   T2(:, hash_col_idx) = get_hash(keyPermMap(T2(:,1),2));
+    T1(:, hash_col_idx) = keyPermMap(T1(:,1),2);
+    T2(:, hash_col_idx) = keyPermMap(T2(:,1),2);
+    
+    % universe sampling first
+    S1 = T1(find(mod(T1(:,hash_col_idx), 100000) <= (p * 100000)), :);
+    S2 = T2(find(mod(T2(:,hash_col_idx), 100000) <= (p * 100000)), :);
+    
+    prob_col_idx = 5;
+    % attach rand column for uniform sampling
+    S1(:,prob_col_idx) = rand(size(S1,1), 1);
+    S2(:,prob_col_idx) = rand(size(S2,1), 1);
+    
+    % uniform sample
+    S1 = S1(find(S1(:,prob_col_idx) <= q1), [1:3]);
+    S2 = S2(find(S2(:,prob_col_idx) <= q2), [1:3]);
+    
+    p1 = p;
+    p2 = p;
+    
+    % write sample files
+    save(leftSample, 'S1', 'p1', 'q1');
+    save(rightSample, 'S2', 'p2', 'q2');
+  end
 end
