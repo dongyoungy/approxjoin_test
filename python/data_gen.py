@@ -13,7 +13,7 @@ import scipy.stats as ss
 import pandas as pd
 
 hdfs_dir = '/tmp/approxjoin'
-raw_data_path = './raw_data'
+raw_data_path = '/home/dyoon/work/approxjoin_data/raw_data'
 text_schema = 'approxjoin_text'
 parquet_schema = 'approxjoin_parquet'
 impala_host = 'cp-2'
@@ -23,7 +23,7 @@ impala_port = 21050
 # call this function to create table
 def create_table(num_rows, num_keys, type, n, overwrite=False):
     (table_name, data_file) = create_table_data(num_rows, num_keys, type, n,
-                                                overwrite)
+                                                True, overwrite)
     hdfs_path = hdfs_dir + '/' + table_name
     load_data_to_hdfs(data_file, hdfs_path)
     create_text_table(table_name, hdfs_path)
@@ -80,7 +80,7 @@ def create_parquet_table(table_name):
     cur.execute(compute_stat_sql)
 
 
-def create_max_var_table_data(num_rows, num_keys, type):
+def create_max_var_table_data(num_rows, num_keys, type, with_dummy=False, overwrite=False):
 
     # seed the rng
     np.random.seed(int(time.time()))
@@ -90,10 +90,18 @@ def create_max_var_table_data(num_rows, num_keys, type):
     T1_file = raw_data_path + '/' + "{0}.csv".format(T1_table_name)
     T2_file = raw_data_path + '/' + "{0}.csv".format(T2_table_name)
 
+    if not os.path.exists(T1_file):
+        print("Data file: '{0}' does not exist".format(T1_file))
+        return 
+
+    if os.path.exists(T2_file) and not overwrite:
+        print("Data file: '{0}' already exists".format(T2_file))
+        return 
+
     # read table files
-    T1_df = pd.read_csv(T1_file, sep='|', header=None)
+    T1_df = pd.read_csv(T1_file, sep='|', header=None, usecols=[0, 1, 2])
     # drop dummy col
-    T1_df = T1_df.drop(columns=[3])
+    #  T1_df = T1_df.drop(columns=[3])
     T1 = T1_df.values
 
     a_v = np.zeros((num_keys, 3))
@@ -121,6 +129,13 @@ def create_max_var_table_data(num_rows, num_keys, type):
 
     write_thread = None
     writer = csv.writer(f, delimiter=delim)
+
+    # set random string for dummy column
+    val3 = [
+        ''.join(
+            random.choice(string.ascii_uppercase + string.digits)
+            for _ in range(dummy_col_size))
+    ] * current_batch_size
 
     while remaining > 0:
 
@@ -152,7 +167,10 @@ def create_max_var_table_data(num_rows, num_keys, type):
         val2.shape = (current_batch_size, 1)
         val3.shape = (current_batch_size, 1)
 
-        rows = np.hstack((keys, val1, val2, val3))
+        if with_dummy:
+            rows = np.hstack((keys, val1, val2, val3))
+        else:
+            rows = np.hstack((keys, val1, val2))
 
         if write_thread is not None:
             write_thread.join()
@@ -170,7 +188,12 @@ def create_max_var_table_data(num_rows, num_keys, type):
         write_thread.join()
 
 
-def create_table_data(num_rows, num_keys, type, n, overwrite=False):
+def create_table_data(num_rows,
+                      num_keys,
+                      type,
+                      n,
+                      with_dummy=False,
+                      overwrite=False):
     if not os.path.exists(raw_data_path):
         os.makedirs(raw_data_path)
 
@@ -268,7 +291,7 @@ def create_table_data(num_rows, num_keys, type, n, overwrite=False):
                     minv**(alpha + 1))**(1 / (alpha + 1))
             keys = [math.floor(k) for k in keys]
 
-        elif type == 'powerlaw1':
+        elif type == 'powerlaw2':
             alpha = -3
             minv = 1
             maxv = num_keys
@@ -297,7 +320,10 @@ def create_table_data(num_rows, num_keys, type, n, overwrite=False):
         val2.shape = (current_batch_size, 1)
         val3.shape = (current_batch_size, 1)
 
-        rows = np.hstack((keys, val1, val2, val3))
+        if with_dummy:
+            rows = np.hstack((keys, val1, val2, val3))
+        else:
+            rows = np.hstack((keys, val1, val2))
 
         if write_thread is not None:
             write_thread.join()

@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 
 hdfs_dir = '/tmp/approxjoin'
-raw_data_path = './raw_data'
+data_path = '/home/dyoon/work/approxjoin_data/'
+raw_data_path = '/home/dyoon/work/approxjoin_data/raw_data'
 text_schema = 'approxjoin_text'
 parquet_schema = 'approxjoin_parquet'
 sample_schema = 'approxjoin_parquet_sample'
@@ -25,33 +26,16 @@ def reset_schema():
     cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(sample_schema))
 
 
-def create_sample_with_file(T1_rows,
-                            T1_keys,
-                            T2_rows,
-                            T2_keys,
-                            leftDist,
-                            rightDist,
-                            type,
-                            num_samples,
-                            isCentralized=True):
+def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
+                              num_sample):
     np.random.seed(int(time.time()))
-    dir = './our_samples/'
-    d = ''
-    if isCentralized:
-        d = 'centralized'
-    else:
-        d = 'decentralized'
-
-    sample_dir = dir + d + '/'
-    if not os.path.exists(sample_dir):
-        os.makedirs(sample_dir)
+    sample_dir = data_path + 'preset_samples'
+    pathlib.Path(sample_dir).mkdir(parents=True, exist_ok=True)
 
     T1_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
-        T1_rows, T1_keys, leftDist, 1)
+        num_rows, num_keys, leftDist, 1)
     T2_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
-        T2_rows, T2_keys, rightDist, 2)
-
-    num_keys = max([T1_keys, T2_keys])
+        num_rows, num_keys, rightDist, 2)
 
     # read table files
     T1_df = pd.read_csv(T1_name, sep='|', header=None)
@@ -61,6 +45,102 @@ def create_sample_with_file(T1_rows,
 
     T2_df = pd.read_csv(T2_name, sep='|', header=None)
     T2_df = T2_df.drop(columns=[3])
+    T2 = T2_df.values
+
+    q1 = e1 / p
+    q2 = e2 / p
+
+    print("creating samples for p = {:.2f}, q = {:.2f}".format(p, q))
+
+    for s in range(1, num_sample + 1):
+        dir = "{}/{}n_{}k/{}_{}/{:.2f}_{:.2f}/{}".format(sample_dir, num_rows, num_keys,
+                                           leftDist, rightDist, p, q, type)
+        pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
+
+        S1_name = "{}/s1_{}.npy".format(dir, s)
+        S2_name = "{}/s2_{}.npy".format(dir, s)
+        if os.path.exists(S1_name) and os.path.exists(S2_name):
+            print("Samples (#{}) already exist".format(s))
+            continue
+
+        # generate random key permutation
+        key_perm = np.random.permutation(num_keys) + 1
+        hash_col_idx = 3
+
+        T1_perm = key_perm[T1[:, 0] - 1]
+        T1_perm.shape = (num_rows, 1)
+
+        T2_perm = key_perm[T2[:, 0] - 1]
+        T2_perm.shape = (num_rows, 1)
+
+        T1_new = np.hstack((T1, T1_perm))
+        T2_new = np.hstack((T2, T2_perm))
+
+        S1 = T1_new[np.where(T1_new[:, hash_col_idx] % 100000 <= (p * 100000))]
+        S2 = T2_new[np.where(T2_new[:, hash_col_idx] % 100000 <= (p * 100000))]
+
+        S1_rows = np.size(S1, 0)
+        S2_rows = np.size(S2, 0)
+
+        prob_col_idx = 4
+        S1 = np.hstack((S1, np.random.rand(S1_rows, 1)))
+        S2 = np.hstack((S2, np.random.rand(S2_rows, 1)))
+
+        S1 = S1[np.where(S1[:, prob_col_idx] <= q1)]
+        S2 = S2[np.where(S2[:, prob_col_idx] <= q2)]
+
+        S1 = S1[:, 0:3]
+        S2 = S2[:, 0:3]
+
+        S1_data = {}
+        S1_data['sample'] = S1
+        S1_data['p'] = p
+        S1_data['q'] = q
+
+        S2_data = {}
+        S2_data['sample'] = S2
+        S2_data['p'] = p
+        S2_data['q'] = q
+
+        np.save(S1_name, S1_data)
+        np.save(S2_name, S2_data)
+
+
+def create_sample_pair(T1_rows,
+                       T1_keys,
+                       T2_rows,
+                       T2_keys,
+                       leftDist,
+                       rightDist,
+                       type,
+                       num_samples,
+                       isCentralized=True):
+    np.random.seed(int(time.time()))
+    dir = data_path + 'our_samples/'
+    d = ''
+    if isCentralized:
+        d = 'centralized'
+    else:
+        d = 'decentralized'
+
+    sample_dir = dir + d + '/'
+    pathlib.Path(sample_dir).mkdir(parents=True, exist_ok=True)
+
+    T1_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
+        T1_rows, T1_keys, leftDist, 1)
+    T2_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
+        T2_rows, T2_keys, rightDist, 2)
+
+    num_keys = max([T1_keys, T2_keys])
+
+    # read table files
+    T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
+    # drop dummy col
+    #  T1_df = T1_df.drop(columns=[3])
+    T1 = T1_df.values
+
+    T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
+    #  T2_df = T2_df.drop(columns=[3])
     T2 = T2_df.values
 
     a_v = np.zeros((num_keys, 3))
@@ -79,7 +159,7 @@ def create_sample_with_file(T1_rows,
     a_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
     a_v[:, 2] = a_v[:, 1]**2
 
-    # get sum and var
+    # get mean and var
     gr = T1_df.groupby(0)
     keys = np.array(list(gr.groups.keys()))
     means = np.array(gr[1].mean().values)
@@ -107,7 +187,8 @@ def create_sample_with_file(T1_rows,
             sum4 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * b_v[:, 1])
             sum5 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * b_v[:, 1])
             val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
-            val = math.sqrt(val)
+            if val > 0:
+                val = math.sqrt(val)
             p = min([1, max([e1, e2, val])])
         elif type == 'avg':
             A_denom = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2
@@ -143,7 +224,9 @@ def create_sample_with_file(T1_rows,
 
             D = (1 / e1 * e2) * (A1 - (2 * B1) + C1)
 
-            val = math.sqrt((A - (2 * B) + C) / D)
+            val = (A - (2 * B) + C) / D
+            if val > 0:
+                val = math.sqrt(val)
 
             p = min([1, max([e1, e2, val])])
     else:
@@ -188,7 +271,8 @@ def create_sample_with_file(T1_rows,
             sum4 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
             sum5 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
             val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
-            val = math.sqrt(val)
+            if val > 0:
+                val = math.sqrt(val)
             p3 = min([1, max([e1, e2, val])])
 
             sum1 = a_v[v2, 2] * mu_v[v2, 2] * n_b**2
@@ -197,6 +281,8 @@ def create_sample_with_file(T1_rows,
             sum4 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b
             sum5 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b
             val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
+            if val > 0:
+                val = math.sqrt(val)
             val = math.sqrt(val)
             p4 = min([1, max([e1, e2, val])])
 
@@ -243,13 +329,11 @@ def create_sample_with_file(T1_rows,
 
     for s in range(1, num_samples + 1):
         dir = "{}/{}n_{}k/{}_{}/{}".format(sample_dir, T1_rows, T1_keys,
-                                            leftDist, rightDist, type)
+                                           leftDist, rightDist, type)
         pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
 
-        S1_name = "{}/s1_{}.npy".format(
-            dir, s)
-        S2_name = "{}/s2_{}.npy".format(
-            dir,s)
+        S1_name = "{}/s1_{}.npy".format(dir, s)
+        S2_name = "{}/s2_{}.npy".format(dir, s)
         if os.path.exists(S1_name) and os.path.exists(S2_name):
             print("Samples (#{}) already exist".format(s))
             continue
@@ -283,8 +367,18 @@ def create_sample_with_file(T1_rows,
         S1 = S1[:, 0:3]
         S2 = S2[:, 0:3]
 
-        np.save(S1_name, S1)
-        np.save(S2_name, S2)
+        S1_data = {}
+        S1_data['sample'] = S1
+        S1_data['p'] = p
+        S1_data['q'] = q1
+
+        S2_data = {}
+        S2_data['sample'] = S2
+        S2_data['p'] = p
+        S2_data['q'] = q2
+
+        np.save(S1_name, S1_data)
+        np.save(S2_name, S2_data)
 
 
 def create_sample(num_rows,
@@ -359,7 +453,9 @@ def create_sample(num_rows,
             sum1 = sum(a_v[:, 2] * b_v[:, 2] - a_v[:, 2] * b_v[:, 1] -
                        a_v[:, 1] * b_v[:, 2] + a_v[:, 1] * b_v[:, 1])
             sum2 = sum(a_v[:, 1] * b_v[:, 1])
-            val = math.sqrt(e1 * e2 * sum1 / sum2)
+            val = e1 * e2 * sum1 / sum2
+            if val > 0:
+                val = math.sqrt(val)
             p = min([1, max([e1, e2, val])])
         elif type == 'sum':
             a_star = max(a_v[:, 1])
