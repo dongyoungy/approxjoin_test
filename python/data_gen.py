@@ -10,9 +10,10 @@ import time
 import impala.dbapi as impaladb
 import numpy as np
 import scipy.stats as ss
+import pandas as pd
 
 hdfs_dir = '/tmp/approxjoin'
-raw_data_path = './raw_data'
+raw_data_path = '/home/dyoon/work/approxjoin_data/raw_data'
 text_schema = 'approxjoin_text'
 parquet_schema = 'approxjoin_parquet'
 impala_host = 'cp-2'
@@ -22,7 +23,7 @@ impala_port = 21050
 # call this function to create table
 def create_table(num_rows, num_keys, type, n, overwrite=False):
     (table_name, data_file) = create_table_data(num_rows, num_keys, type, n,
-                                                overwrite)
+                                                True, overwrite)
     hdfs_path = hdfs_dir + '/' + table_name
     load_data_to_hdfs(data_file, hdfs_path)
     create_text_table(table_name, hdfs_path)
@@ -79,7 +80,120 @@ def create_parquet_table(table_name):
     cur.execute(compute_stat_sql)
 
 
-def create_table_data(num_rows, num_keys, type, n, overwrite=False):
+def create_max_var_table_data(num_rows, num_keys, type, with_dummy=False, overwrite=False):
+
+    # seed the rng
+    np.random.seed(int(time.time()))
+    T1_table_name = "t_{0}n_{1}k_{2}_{3}".format(num_rows, num_keys, type, 1)
+    T2_table_name = "t_{0}n_{1}k_{2}_max_var_{3}".format(
+        num_rows, num_keys, type, 2)
+    T1_file = raw_data_path + '/' + "{0}.csv".format(T1_table_name)
+    T2_file = raw_data_path + '/' + "{0}.csv".format(T2_table_name)
+
+    if not os.path.exists(T1_file):
+        print("Data file: '{0}' does not exist".format(T1_file))
+        return 
+
+    if os.path.exists(T2_file) and not overwrite:
+        print("Data file: '{0}' already exists".format(T2_file))
+        return 
+
+    # read table files
+    T1_df = pd.read_csv(T1_file, sep='|', header=None, usecols=[0, 1, 2])
+    # drop dummy col
+    #  T1_df = T1_df.drop(columns=[3])
+    T1 = T1_df.values
+
+    a_v = np.zeros((num_keys, 3))
+
+    keys = np.arange(1, num_keys + 1)
+    a_v[:, 0] = keys
+
+    # get group count for T1
+    counts = np.array(np.unique(T1[:, 0], return_counts=True)).T
+    a_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
+
+    max_key = np.argmax(a_v[:, 1]) + 1
+
+    print("max_key = {}".format(max_key))
+
+    delim = '|'
+    remaining = num_rows
+    # write 500k records at a time
+    default_batch_size = 500000
+    current_batch_size = default_batch_size
+    dummy_col_size = 200
+
+    # open file
+    f = open(T2_file, "w")
+
+    write_thread = None
+    writer = csv.writer(f, delimiter=delim)
+
+    # set random string for dummy column
+    val3 = [
+        ''.join(
+            random.choice(string.ascii_uppercase + string.digits)
+            for _ in range(dummy_col_size))
+    ] * current_batch_size
+
+    while remaining > 0:
+
+        if remaining < default_batch_size:
+            current_batch_size = remaining
+            val3 = [
+                ''.join(
+                    random.choice(string.ascii_uppercase + string.digits)
+                    for _ in range(dummy_col_size))
+            ] * current_batch_size
+
+        keys = np.random.randint(1, num_keys + 1, current_batch_size)
+        max_idx = np.random.choice(np.arange(1, current_batch_size + 1),
+                                   round(0.75 * current_batch_size),
+                                   replace=False)
+        keys[max_idx - 1] = max_key
+
+        # generate data for two value columns
+        val1 = np.random.normal(100, 25, current_batch_size).astype(int)
+        val2 = np.random.randint(1, 100, current_batch_size)
+
+        keys = np.array(keys)
+        val1 = np.array(val1)
+        val2 = np.array(val2)
+        val3 = np.array(val3)
+
+        keys.shape = (current_batch_size, 1)
+        val1.shape = (current_batch_size, 1)
+        val2.shape = (current_batch_size, 1)
+        val3.shape = (current_batch_size, 1)
+
+        if with_dummy:
+            rows = np.hstack((keys, val1, val2, val3))
+        else:
+            rows = np.hstack((keys, val1, val2))
+
+        if write_thread is not None:
+            write_thread.join()
+
+        write_thread = threading.Thread(target=write_csv,
+                                        args=(
+                                            writer,
+                                            rows,
+                                        ))
+
+        write_thread.start()
+        remaining -= current_batch_size
+
+    if write_thread is not None:
+        write_thread.join()
+
+
+def create_table_data(num_rows,
+                      num_keys,
+                      type,
+                      n,
+                      with_dummy=False,
+                      overwrite=False):
     if not os.path.exists(raw_data_path):
         os.makedirs(raw_data_path)
 
@@ -139,8 +253,46 @@ def create_table_data(num_rows, num_keys, type, n, overwrite=False):
             keys = keys + r
             keys = keys.round().astype(int)
 
+        elif type == 'normal1':
+            # from: https://stackoverflow.com/questions/37411633/
+            # how-to-generate-a-random-normal-distribution-of-integers
+            r = num_keys / 2
+            scale = num_keys / 10
+            keys = ss.truncnorm(a=(-r + 1) / scale, b=r / scale,
+                                scale=scale).rvs(current_batch_size)
+            keys = keys + r
+            keys = keys.round().astype(int)
+
+        elif type == 'normal2':
+            # from: https://stackoverflow.com/questions/37411633/
+            # how-to-generate-a-random-normal-distribution-of-integers
+            r = num_keys / 2
+            scale = num_keys / 20
+            keys = ss.truncnorm(a=(-r + 1) / scale, b=r / scale,
+                                scale=scale).rvs(current_batch_size)
+            keys = keys + r
+            keys = keys.round().astype(int)
+
         elif type == 'powerlaw':
             alpha = -2.5
+            minv = 1
+            maxv = num_keys
+            rand_keys = np.array(np.random.random(size=current_batch_size))
+            keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+                    minv**(alpha + 1))**(1 / (alpha + 1))
+            keys = [math.floor(k) for k in keys]
+
+        elif type == 'powerlaw1':
+            alpha = -1.5
+            minv = 1
+            maxv = num_keys
+            rand_keys = np.array(np.random.random(size=current_batch_size))
+            keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+                    minv**(alpha + 1))**(1 / (alpha + 1))
+            keys = [math.floor(k) for k in keys]
+
+        elif type == 'powerlaw2':
+            alpha = -3
             minv = 1
             maxv = num_keys
             rand_keys = np.array(np.random.random(size=current_batch_size))
@@ -168,7 +320,10 @@ def create_table_data(num_rows, num_keys, type, n, overwrite=False):
         val2.shape = (current_batch_size, 1)
         val3.shape = (current_batch_size, 1)
 
-        rows = np.hstack((keys, val1, val2, val3))
+        if with_dummy:
+            rows = np.hstack((keys, val1, val2, val3))
+        else:
+            rows = np.hstack((keys, val1, val2))
 
         if write_thread is not None:
             write_thread.join()
