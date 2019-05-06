@@ -3,7 +3,27 @@ import sample_gen as sg
 import data_gen as dg
 import multiprocessing as mp
 import calculate_agg as cal
+import sys
 from itertools import product
+
+from email.mime.text import MIMEText
+from subprocess import Popen, PIPE
+
+
+def callback_error(result):
+    print("Error: " + str(result))
+    msg = MIMEText("N/A")
+    msg["From"] = "dyoon@umich.edu"
+    msg["To"] = "dyoon@umich.edu"
+    msg["Subject"] = "Run Failed."
+    p = Popen(["/usr/sbin/sendmail", "-t", "-oi"], stdin=PIPE)
+    p.communicate(msg.as_bytes())
+    sys.exit("Terminate due to subprocess failure")
+
+
+def callback_success(result):
+    print("Success")
+
 
 #  setup = "import sample_gen as sg"
 #  sg.reset_schema()
@@ -25,7 +45,7 @@ from itertools import product
 
 num_proc = 8
 
-pool = mp.Pool(num_proc)
+pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 #  for k in [1000 * 1000, 10 * 1000 * 1000]:
 #  for type in ['uniform', 'normal', 'powerlaw']:
 #  for n in [1, 2]:
@@ -52,16 +72,16 @@ dists.append(('powerlaw', 'powerlaw'))
 aggs = ['count', 'sum', 'avg']
 is_centralized_list = [True]
 
-num_samples = 5000
+num_samples = 500
 
 args = []
-for num_row in [10 * 1000 * 1000]:
-    for num_key in [10 * 1000 * 1000]:
-        for dist in dists:
-            for agg in aggs:
-                for is_centralized in is_centralized_list:
-                    args.append((num_row, num_key, num_row, num_key, dist[0],
-                                 dist[1], agg, num_samples, is_centralized))
+#  for num_row in [10 * 1000 * 1000]:
+#  for num_key in [10 * 1000 * 1000]:
+#  for dist in dists:
+#  for agg in aggs:
+#  for is_centralized in is_centralized_list:
+#  args.append((num_row, num_key, num_row, num_key, dist[0],
+#  dist[1], agg, num_samples, is_centralized))
 
 dists = []
 for leftDist in ['uniform', 'normal', 'powerlaw']:
@@ -75,11 +95,11 @@ dists.append(('normal', 'normal_max_var'))
 dists.append(('powerlaw', 'powerlaw_max_var'))
 aggs = ['count', 'sum']
 for num_row in [10 * 1000 * 1000]:
-    for num_key in [1 * 1000 * 1000, 10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
         for dist in dists:
             for agg in aggs:
                 args.append((num_row, num_key, num_row, num_key, dist[0],
-                             dist[1], agg, num_samples, False))
+                             dist[1], agg, 3000, False))
 
 preset_args = []
 prob = []
@@ -107,11 +127,20 @@ for num_row in [10 * 1000 * 1000]:
                                     p[1], num_samples))
 
 results = []
-for arg in args:
-    results.append(pool.apply_async(sg.create_sample_pair, arg))
 
-for arg in preset_args:
-    results.append(pool.apply_async(sg.create_preset_sample_pair, arg))
+#  for arg in preset_args:
+#  results.append(
+#  pool.apply_async(sg.create_preset_sample_pair,
+#  arg,
+#  callback=callback_success,
+#  error_callback=callback_error))
+
+for arg in args:
+    results.append(
+        pool.apply_async(sg.create_sample_pair,
+                         arg,
+                         callback=callback_success,
+                         error_callback=callback_error))
 #  for num_row in [10 * 1000 * 1000]:
 #  for num_key in [10 * 1000 * 1000]:
 #  for dist in dists:
@@ -125,6 +154,11 @@ for arg in preset_args:
 #  results = pool.starmap(cal.estimate_agg, args)
 
 pool.close()
+pool.join()
 
-for r in results:
-    r.get()
+msg = MIMEText("N/A")
+msg["From"] = "dyoon@umich.edu"
+msg["To"] = "dyoon@umich.edu"
+msg["Subject"] = "Run Successful"
+p = Popen(["/usr/sbin/sendmail", "-t", "-oi"], stdin=PIPE)
+p.communicate(msg.as_bytes())
