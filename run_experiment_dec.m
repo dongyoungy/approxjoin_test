@@ -6,7 +6,7 @@ init_cache;
 
 start_timestamp = datestr(datetime('now'));
 
-num_sample = 100;
+num_sample = 5000;
 nRows = 10000000;
 kvals = [10000000 1000000];
 
@@ -40,10 +40,10 @@ agg{3} = 'avg';
 % 
 for k = 2
   kval = kvals(k);
-  for d1 = 1:num_dist1
-    for d2 = 1:num_dist2
-      for p = 1:6
-        for a = 1:2
+  for d1 = 1
+    for d2 = 8
+      for p = 6
+        for a = 1
           res = [];
           for s = 1:num_sample
             [actual estimate] = calculate_preset_agg(nRows, kval, t1_dist{d1}, t2_dist{d1, d2}, agg{a}, prob(p,1), prob(p,2), s);
@@ -76,9 +76,9 @@ save(sprintf("./test_results/dec_preset_result - %s.mat", start_timestamp), 'dec
 
 for k = 2
   kval = kvals(k);
-  for d1 = 1:num_dist1
-    for d2 = 1:num_dist2
-      for a = 1:2
+  for d1 = 1
+    for d2 = 8
+      for a = 1
         res = [];
         for s = 1:num_sample
           [actual, estimate, p1, q1, p2, q2] = calculate_agg(nRows, kval, t1_dist{d1}, t2_dist{d1, d2}, agg{a}, s, false);

@@ -26,9 +26,11 @@ function [actual, estimate, p1, q1, p2, q2] = calculate_agg(nRows, nKeys, leftDi
       rightSampleDist = leftDist;
     end
   end
+
+  sample_dir = '/Volumes/HP_SimpleSave/approxjoin_data/';
   
-  leftSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftSampleDist '_' rightSampleDist '_' aggFunc '_s1_' num2str(sampleIdx) '.mat'];
-  rightSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftSampleDist '_' rightSampleDist '_' aggFunc '_s2_' num2str(sampleIdx) '.mat'];
+  leftSample = [sample_dir folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftSampleDist '_' rightSampleDist '_' aggFunc '_s1_' num2str(sampleIdx) '.mat'];
+  rightSample = [sample_dir folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftSampleDist '_' rightSampleDist '_' aggFunc '_s2_' num2str(sampleIdx) '.mat'];
   
   fprintf("For {%d, %d, %s, %s, %s, %s, %s, %s}:\n", nRows, nKeys, leftDist, rightDist, leftSampleDist, rightSampleDist, aggFunc, folder);
   % calculate actual value
