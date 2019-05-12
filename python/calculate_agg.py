@@ -1,8 +1,11 @@
 from collections import defaultdict
-from cachetools import cached, LRUCache
 from threading import RLock
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+from cachetools import LRUCache, cached
+
+from estimate_result import EstimateResult
 
 actual_cache = LRUCache(maxsize=4 * 1024)
 estimate_cache = LRUCache(maxsize=16 * 1024)
@@ -72,8 +75,10 @@ def calculate_actual(num_rows, num_keys, leftDist, rightDist, aggFunc):
         for k in d:
             mu[int(k - 1), 0] = d[k]
 
-        actual = sum(mu[:, 0] * T1_freq[:, 1] * T2_freq[:, 1]) / sum(
-            T1_freq[:, 1] * T2_freq[:, 1])
+        denom = sum(T1_freq[:, 1] * T2_freq[:, 1])
+
+        actual = sum(mu[:, 0] * T1_freq[:, 1] *
+                     T2_freq[:, 1]) / denom if denom != 0 else 0
     else:
         print("Unsupported func: {}".format(aggFunc))
 
@@ -148,10 +153,10 @@ def estimate_agg(num_rows, num_keys, leftDist, rightDist, aggFunc, sample_idx,
         p = min([p1, p2])
         estimate = estimate * (1 / (p * q1 * q2))
     elif aggFunc == 'avg':
-        mu = np.zeros((num_keys, 2))
+        mu = np.zeros((num_keys, 1))
         d = get_group_by_average(S1)
         for k in d:
-            mu[int(k - 1), 1] = d[k]
+            mu[int(k - 1), 0] = d[k]
 
         # get mean and var
         #  gr = S1_df.groupby(0)
@@ -160,19 +165,32 @@ def estimate_agg(num_rows, num_keys, leftDist, rightDist, aggFunc, sample_idx,
         #  mu[keys - 1, 1] = means
 
         estimate_count = sum(S1_freq[:, 1] * S2_freq[:, 1])
-        estimate_sum = sum(mu[:, 1] * S1_freq[:, 1] * S2_freq[:, 1])
+        estimate_sum = sum(mu[:, 0] * S1_freq[:, 1] * S2_freq[:, 1])
         p = min([p1, p2])
         estimate_sum = estimate_sum * (1 / (p * q1 * q2))
         estimate_count = estimate_count * (1 / (p * q1 * q2))
-        estimate = estimate_sum / estimate_count
+        estimate = estimate_sum / estimate_count if estimate_count != 0 else 0
     else:
         print("Unsupported function: {}".format(aggFunc))
         return
 
     p = p1
     q = q1
+
+    # duplicate info just in case
+    result = EstimateResult()
+    result.actual = actual
+    result.estimate = estimate
+    result.p = p
+    result.q = q
+    result.num_rows = num_rows
+    result.num_keys = num_keys
+    result.left_dist = leftDist
+    result.right_dist = rightDist
+    result.agg_func = aggFunc
+
     return (num_rows, num_keys, leftDist, rightDist, aggFunc, sample_idx,
-            actual, estimate, p, q)
+            result)
 
 
 @cached(estimate_cache, lock=lock)
@@ -254,5 +272,16 @@ def estimate_preset_agg(num_rows, num_keys, leftDist, rightDist, aggFunc, p, q,
         print("Unsupported function: {}".format(aggFunc))
         return
 
+    result = EstimateResult()
+    result.actual = actual
+    result.estimate = estimate
+    result.p = p
+    result.q = q
+    result.num_rows = num_rows
+    result.num_keys = num_keys
+    result.left_dist = leftDist
+    result.right_dist = rightDist
+    result.agg_func = aggFunc
+
     return (num_rows, num_keys, leftDist, rightDist, aggFunc, sample_idx,
-            actual, estimate, p, q)
+            result)

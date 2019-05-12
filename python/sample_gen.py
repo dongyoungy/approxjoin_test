@@ -76,7 +76,7 @@ def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
         S1_name = "{}/s1_{}.npy".format(dir, s)
         S2_name = "{}/s2_{}.npy".format(dir, s)
         if os.path.exists(S1_name) and os.path.exists(S2_name):
-            print("Samples (#{}) already exist".format(s))
+            #  print("Samples (#{}) already exist".format(s))
             continue
 
         # generate random key permutation

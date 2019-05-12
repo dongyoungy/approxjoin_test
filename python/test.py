@@ -43,7 +43,7 @@ def callback_success(result):
 #  t = timeit.timeit(stmt=s, setup=setup, number=1)
 #  print("[{0}, {1}, {2}] = {3} s".format(dist, type, d, t))
 
-num_proc = 8
+num_proc = 16
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 #  for k in [1000 * 1000, 10 * 1000 * 1000]:
@@ -61,13 +61,13 @@ pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 #  pool.apply_async(dg.create_max_var_table_data, [num_rows, k, type])
 
 # for centralized setting
-dists = []
-dists.append(('uniform', 'uniform'))
-dists.append(('uniform', 'normal'))
-dists.append(('uniform', 'powerlaw'))
-dists.append(('normal', 'normal'))
-dists.append(('normal', 'powerlaw'))
-dists.append(('powerlaw', 'powerlaw'))
+cen_dists = []
+cen_dists.append(('uniform', 'uniform'))
+cen_dists.append(('uniform', 'normal'))
+cen_dists.append(('uniform', 'powerlaw'))
+cen_dists.append(('normal', 'normal'))
+cen_dists.append(('normal', 'powerlaw'))
+cen_dists.append(('powerlaw', 'powerlaw'))
 
 aggs = ['count', 'sum', 'avg']
 is_centralized_list = [True]
@@ -77,12 +77,13 @@ num_samples = 500
 args = []
 #  for num_row in [10 * 1000 * 1000]:
 #  for num_key in [10 * 1000 * 1000]:
-#  for dist in dists:
+#  for dist in cen_dists:
 #  for agg in aggs:
 #  for is_centralized in is_centralized_list:
 #  args.append((num_row, num_key, num_row, num_key, dist[0],
 #  dist[1], agg, num_samples, is_centralized))
 
+# for decentralized setting
 dists = []
 for leftDist in ['uniform', 'normal', 'powerlaw']:
     for rightDist in [
@@ -94,12 +95,12 @@ dists.append(('uniform', 'uniform_max_var'))
 dists.append(('normal', 'normal_max_var'))
 dists.append(('powerlaw', 'powerlaw_max_var'))
 aggs = ['count', 'sum']
-for num_row in [10 * 1000 * 1000]:
-    for num_key in [1 * 1000 * 1000]:
-        for dist in dists:
-            for agg in aggs:
-                args.append((num_row, num_key, num_row, num_key, dist[0],
-                             dist[1], agg, 3000, False))
+#  for num_row in [10 * 1000 * 1000]:
+#  for num_key in [1 * 1000 * 1000]:
+#  for dist in dists:
+#  for agg in aggs:
+#  args.append((num_row, num_key, num_row, num_key, dist[0],
+#  dist[1], agg, 5000, False))
 
 preset_args = []
 prob = []
@@ -110,37 +111,28 @@ prob.append((0.333, 0.03))
 prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
-# for centralized setting
-dists = []
-dists.append(('uniform', 'uniform'))
-dists.append(('uniform', 'normal'))
-dists.append(('uniform', 'powerlaw'))
-dists.append(('normal', 'normal'))
-dists.append(('normal', 'powerlaw'))
-dists.append(('powerlaw', 'powerlaw'))
-
 for num_row in [10 * 1000 * 1000]:
-    for num_key in [1 * 1000 * 1000, 10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
         for dist in dists:
             for p in prob:
-                preset_args.append((num_row, num_key, dist[0], dist[1], p[0],
-                                    p[1], num_samples))
+                preset_args.append(
+                    (num_row, num_key, dist[0], dist[1], p[0], p[1], 2000))
 
 results = []
 
-#  for arg in preset_args:
-#  results.append(
-#  pool.apply_async(sg.create_preset_sample_pair,
-#  arg,
-#  callback=callback_success,
-#  error_callback=callback_error))
-
-for arg in args:
+for arg in preset_args:
     results.append(
-        pool.apply_async(sg.create_sample_pair,
+        pool.apply_async(sg.create_preset_sample_pair,
                          arg,
                          callback=callback_success,
                          error_callback=callback_error))
+
+#  for arg in args:
+#  results.append(
+#  pool.apply_async(sg.create_sample_pair,
+#  arg,
+#  callback=callback_success,
+#  error_callback=callback_error))
 #  for num_row in [10 * 1000 * 1000]:
 #  for num_key in [10 * 1000 * 1000]:
 #  for dist in dists:
