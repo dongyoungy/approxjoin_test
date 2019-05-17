@@ -43,7 +43,8 @@ pool = mp.Pool(processes=num_proc)
 
 our_cen_results = defaultdict(list)
 our_dec_results = defaultdict(list)
-preset_results = defaultdict(list)
+cen_preset_results = defaultdict(list)
+dec_preset_results = defaultdict(list)
 
 cen_dists = []
 
@@ -72,12 +73,10 @@ dec_aggs = ['count', 'sum']
 is_centralized_list = [True]
 
 cen_num_samples = 500
-dec_num_samples = 2000
+dec_num_samples = 3000
 
 cen_results = []
 dec_results = []
-cen_preset_results = []
-dec_preset_results = []
 
 cen_args = []
 dec_args = []
@@ -104,6 +103,7 @@ for num_row in [10 * 1000 * 1000]:
 '''
 
 # centralized setting (preset)
+'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [10 * 1000 * 1000]:
         for dist in cen_dists:
@@ -112,6 +112,7 @@ for num_row in [10 * 1000 * 1000]:
                     for s in range(1, cen_num_samples + 1):
                         cen_preset_args.append((num_row, num_key, dist[0],
                                                 dist[1], agg, p[0], p[1], s))
+'''
 
 # decentralized setting
 for num_row in [10 * 1000 * 1000]:
@@ -137,9 +138,10 @@ if cen_args:
     for r in cen_results:
         # (num_rows, num_keys, left_dist, right_dist, agg_func, sample_idx)
         # => result
-        our_cen_results[r[0:5]].append(r[6])
+        our_cen_results[r[0:5]].append(r[-1])
     if our_cen_results:
-        result_file = "{}/our_cen_results_{}.npy".format(cen_result_path, time_str)
+        result_file = "{}/our_cen_results_{}.npy".format(
+            cen_result_path, time_str)
         np.save(result_file, our_cen_results)
 
 if dec_args:
@@ -147,27 +149,30 @@ if dec_args:
     for r in dec_results:
         # (num_rows, num_keys, left_dist, right_dist, agg_func, sample_idx)
         # => result
-        our_dec_results[r[0:5]].append(r[6])
+        our_dec_results[r[0:5]].append(r[-1])
     if our_dec_results:
-        result_file = "{}/our_dec_results_{}.npy".format(dec_result_path, time_str)
+        result_file = "{}/our_dec_results_{}.npy".format(
+            dec_result_path, time_str)
         np.save(result_file, our_dec_results)
 
+results = []
 if cen_preset_args:
-    cen_preset_results = pool.starmap(cal.estimate_preset_agg, cen_preset_args)
-    for r in cen_preset_results:
-        cen_preset_results[r[0:5]].append(r[6])
+    results = pool.starmap(cal.estimate_preset_agg, cen_preset_args)
+    for r in results:
+        cen_preset_results[r[0:7]].append(r[-1])
     if cen_preset_results:
         result_file = "{}/cen_preset_results_{}.npy".format(
-            cen_result_path, time_str)
+            preset_result_path, time_str)
         np.save(result_file, cen_preset_results)
 
+results = []
 if dec_preset_args:
-    dec_preset_results = pool.starmap(cal.estimate_preset_agg, dec_preset_args)
-    for r in dec_preset_results:
-        dec_preset_results[r[0:5]].append(r[6])
+    results = pool.starmap(cal.estimate_preset_agg, dec_preset_args)
+    for r in results:
+        dec_preset_results[r[0:7]].append(r[-1])
     if dec_preset_results:
         result_file = "{}/dec_preset_results_{}.npy".format(
-            dec_result_path, time_str)
+            preset_result_path, time_str)
         np.save(result_file, dec_preset_results)
 
 pool.close()

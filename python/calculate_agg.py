@@ -267,7 +267,7 @@ def estimate_preset_agg(num_rows, num_keys, leftDist, rightDist, aggFunc, p, q,
         p = min([p1, p2])
         estimate_sum = estimate_sum * (1 / (p * q1 * q2))
         estimate_count = estimate_count * (1 / (p * q1 * q2))
-        estimate = estimate_sum / estimate_count
+        estimate = estimate_sum / estimate_count if estimate_count != 0 else 0
     else:
         print("Unsupported function: {}".format(aggFunc))
         return
@@ -283,5 +283,5 @@ def estimate_preset_agg(num_rows, num_keys, leftDist, rightDist, aggFunc, p, q,
     result.right_dist = rightDist
     result.agg_func = aggFunc
 
-    return (num_rows, num_keys, leftDist, rightDist, aggFunc, sample_idx,
+    return (num_rows, num_keys, leftDist, rightDist, aggFunc, p, q, sample_idx,
             result)

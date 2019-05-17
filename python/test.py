@@ -95,12 +95,12 @@ dists.append(('uniform', 'uniform_max_var'))
 dists.append(('normal', 'normal_max_var'))
 dists.append(('powerlaw', 'powerlaw_max_var'))
 aggs = ['count', 'sum']
-#  for num_row in [10 * 1000 * 1000]:
-#  for num_key in [1 * 1000 * 1000]:
-#  for dist in dists:
-#  for agg in aggs:
-#  args.append((num_row, num_key, num_row, num_key, dist[0],
-#  dist[1], agg, 5000, False))
+for num_row in [10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
+        for dist in dists:
+            for agg in aggs:
+                args.append((num_row, num_key, num_row, num_key, dist[0],
+                             dist[1], agg, 3000, False))
 
 preset_args = []
 prob = []
@@ -116,9 +116,16 @@ for num_row in [10 * 1000 * 1000]:
         for dist in dists:
             for p in prob:
                 preset_args.append(
-                    (num_row, num_key, dist[0], dist[1], p[0], p[1], 2000))
+                    (num_row, num_key, dist[0], dist[1], p[0], p[1], 3000))
 
 results = []
+
+for arg in args:
+    results.append(
+        pool.apply_async(sg.create_sample_pair,
+                         arg,
+                         callback=callback_success,
+                         error_callback=callback_error))
 
 for arg in preset_args:
     results.append(
@@ -127,12 +134,6 @@ for arg in preset_args:
                          callback=callback_success,
                          error_callback=callback_error))
 
-#  for arg in args:
-#  results.append(
-#  pool.apply_async(sg.create_sample_pair,
-#  arg,
-#  callback=callback_success,
-#  error_callback=callback_error))
 #  for num_row in [10 * 1000 * 1000]:
 #  for num_key in [10 * 1000 * 1000]:
 #  for dist in dists:
