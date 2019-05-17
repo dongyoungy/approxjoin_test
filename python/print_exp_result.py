@@ -92,13 +92,25 @@ def print_preset_result(results):
                 'powerlaw1', 'powerlaw2'
             ]
             t2s.append(t1 + '_max_var')
+
+            num_prob = len(prob)
+            num_t2 = len(t2s)
+
+            arr = np.ndarray((num_t2, num_prob))
+
             for pr in prob:
                 p = pr[0]
                 q = pr[1]
                 print("T1 = {}, Agg = {}, p = {}, q = {}".format(
                     t1, agg, p, q))
                 for t2 in t2s:
-                    print("{:.3f}".format(new_results[t1][t2][(agg, p,
-                                                                       q)]))
+                    val = new_results[t1][t2][(agg, p, q)]
+                    arr[t2s.index(t2)][prob.index(pr)] = val
+                    print("{:.3f}".format(new_results[t1][t2][(agg, p, q)]))
+
+            for i in range(0, num_t2):
+                for j in range(0, num_prob):
+                    print(arr[i][j], end=",")
+                print()
 
     return new_results
