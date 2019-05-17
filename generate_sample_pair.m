@@ -6,6 +6,8 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, num_sa
     isCentralized = true;
   end
 
+  % sample_dir = '/Volumes/HP_SimpleSave/approxjoin_data/';
+  sample_dir = './';
   if isCentralized
     folder = 'centralized';
   else
@@ -190,9 +192,9 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, num_sa
       C4 = sum( a_v(:,3) .* b_v(:,3) ) * sum( a_v(:,2) .* mu_v(:,2) .* b_v(:,2) )^2 / C_denom;
       C = C1 - C2 - C3 + C4;
       
-      D = (1 / e1 * e2) * (A1 - B1 + C1);
+      D = (1 / e1 * e2) * (A1 - 2*B1 + C1);
       
-      val = sqrt((A - B + C) / D);
+      val = sqrt((A - 2*B + C) / D);
       
       p = min([1 max([e1 e2 val])]);
       fprintf("p = %f\n", p);
@@ -355,8 +357,8 @@ function generate_sample_pair(nRows, nKeys, leftDist, rightDist, aggFunc, num_sa
   
   % create 'num_sample' sample pairs
   for sampleIdx = 1:num_sample
-    leftSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s1_' num2str(sampleIdx) '.mat'];
-    rightSample = ['./' folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s2_' num2str(sampleIdx) '.mat'];
+    leftSample = [sample_dir folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s1_' num2str(sampleIdx) '.mat'];
+    rightSample = [sample_dir folder '/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' aggFunc '_s2_' num2str(sampleIdx) '.mat'];
 
     % check whether sample file already exists
     if isfile(leftSample) && isfile(rightSample)

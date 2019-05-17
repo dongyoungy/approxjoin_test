@@ -1,7 +1,9 @@
+import gc
 import os
 import math
 import time
 import pathlib
+import datetime
 
 import impala.dbapi as impaladb
 import numpy as np
@@ -39,29 +41,43 @@ def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
         num_rows, num_keys, rightDist, 2)
 
     # read table files
-    T1_df = pd.read_csv(T1_name, sep='|', header=None)
+    T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
     # drop dummy col
-    T1_df = T1_df.drop(columns=[3])
+    #  T1_df = T1_df.drop(columns=[3])
     T1 = T1_df.values
 
-    T2_df = pd.read_csv(T2_name, sep='|', header=None)
-    T2_df = T2_df.drop(columns=[3])
+    T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
+    #  T2_df = T2_df.drop(columns=[3])
     T2 = T2_df.values
 
     q1 = e1 / p
     q2 = e2 / p
 
-    print("creating samples for p = {:.2f}, q = {:.2f}".format(p, q))
+    print("creating samples for p = {:.3f}, q = {:.3f}".format(p, q))
+
+    dir = "{}/{}n_{}k/{}_{}/{:.3f}_{:.3f}/".format(sample_dir, num_rows,
+                                                   num_keys, leftDist,
+                                                   rightDist, p, q)
+    pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
+
+    T1_extra = np.zeros((num_rows, 2))
+    T2_extra = np.zeros((num_rows, 2))
+
+    T1_new = np.hstack((T1, T1_extra))
+    T2_new = np.hstack((T2, T2_extra))
+
+    print("Starting to write {} samples @ {} in: {}".format(
+        num_sample, str(datetime.datetime.now()), dir),
+          flush=True)
+
+    start = time.time()
 
     for s in range(1, num_sample + 1):
-        dir = "{}/{}n_{}k/{}_{}/{:.2f}_{:.2f}/{}".format(
-            sample_dir, num_rows, num_keys, leftDist, rightDist, p, q, type)
-        pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
 
         S1_name = "{}/s1_{}.npy".format(dir, s)
         S2_name = "{}/s2_{}.npy".format(dir, s)
         if os.path.exists(S1_name) and os.path.exists(S2_name):
-            print("Samples (#{}) already exist".format(s))
+            #  print("Samples (#{}) already exist".format(s))
             continue
 
         # generate random key permutation
@@ -69,13 +85,10 @@ def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
         hash_col_idx = 3
 
         T1_perm = key_perm[T1[:, 0] - 1]
-        T1_perm.shape = (num_rows, 1)
-
         T2_perm = key_perm[T2[:, 0] - 1]
-        T2_perm.shape = (num_rows, 1)
 
-        T1_new = np.hstack((T1, T1_perm))
-        T2_new = np.hstack((T2, T2_perm))
+        T1_new[:, hash_col_idx] = T1_perm
+        T2_new[:, hash_col_idx] = T2_perm
 
         S1 = T1_new[np.where(T1_new[:, hash_col_idx] % 100000 <= (p * 100000))]
         S2 = T2_new[np.where(T2_new[:, hash_col_idx] % 100000 <= (p * 100000))]
@@ -84,8 +97,8 @@ def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
         S2_rows = np.size(S2, 0)
 
         prob_col_idx = 4
-        S1 = np.hstack((S1, np.random.rand(S1_rows, 1)))
-        S2 = np.hstack((S2, np.random.rand(S2_rows, 1)))
+        S1[:, prob_col_idx] = np.random.rand(S1_rows)
+        S2[:, prob_col_idx] = np.random.rand(S2_rows)
 
         S1 = S1[np.where(S1[:, prob_col_idx] <= q1)]
         S2 = S2[np.where(S2[:, prob_col_idx] <= q2)]
@@ -105,6 +118,15 @@ def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
 
         np.save(S1_name, S1_data)
         np.save(S2_name, S2_data)
+
+        del S1, S2, key_perm, T1_perm, T2_perm
+        gc.collect()
+
+    end = time.time()
+    print("Sample creation done (took {} s) in: {}".format(
+        str(end - start), dir),
+          flush=True)
+    return True
 
 
 def create_sample_pair(T1_rows,
@@ -147,13 +169,13 @@ def create_sample_pair(T1_rows,
     a_v = np.zeros((num_keys, 3))
     b_v = np.zeros((num_keys, 3))
     mu_v = np.zeros((num_keys, 3))
-    var_v = np.zeros((num_keys, 3))
+    var_v = np.zeros((num_keys, 2))
 
-    keys = np.arange(1, num_keys + 1)
-    a_v[:, 0] = keys
-    b_v[:, 0] = keys
-    mu_v[:, 0] = keys
-    var_v[:, 0] = keys
+    all_keys = np.arange(1, num_keys + 1)
+    a_v[:, 0] = all_keys
+    b_v[:, 0] = all_keys
+    mu_v[:, 0] = all_keys
+    var_v[:, 0] = all_keys
 
     # get group count for T1
     counts = np.array(np.unique(T1[:, 0], return_counts=True)).T
@@ -167,6 +189,7 @@ def create_sample_pair(T1_rows,
     vars = np.array(np.nan_to_num(gr[1].var().values))
 
     mu_v[keys - 1, 1] = means
+    mu_v[:, 2] = mu_v[:, 1]**2
     var_v[keys - 1, 1] = vars
 
     if isCentralized:
@@ -244,14 +267,14 @@ def create_sample_pair(T1_rows,
         elif type == 'sum':
             n_b = T2_rows
             v = np.zeros((num_keys, 3))
-            v[:, 0] = keys
+            v[:, 0] = all_keys
             v[:, 1] = a_v[:, 2] * mu_v[:, 2]
             v[:, 2] = a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1])
             v1 = np.argmax(v[:, 1])
             v2 = np.argmax(v[:, 2])
             a_vi = [a_v[v1, 1], a_v[v2, 1]]
             mu_vi = [mu_v[v1, 1], mu_v[v2, 1]]
-            var_vi = [var_v[v1, 2], var_v[v2, 1]]
+            var_vi = [var_v[v1, 1], var_v[v2, 1]]
 
             #  quadratic equation for h1(p) - h2(p) = 0
             eq = [
@@ -263,8 +286,11 @@ def create_sample_pair(T1_rows,
                 h_const(e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
             ]
             r = np.roots(eq)
-            p1 = r[0]
-            p2 = r[1]
+            p1 = 0
+            p2 = 0
+            if len(r) == 2:
+                p1 = r[0]
+                p2 = r[1]
 
             sum1 = a_v[v1, 2] * mu_v[v1, 2] * n_b**2
             sum2 = a_v[v1, 2] * mu_v[v1, 2] * n_b
@@ -284,7 +310,6 @@ def create_sample_pair(T1_rows,
             val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
             if val > 0:
                 val = math.sqrt(val)
-            val = math.sqrt(val)
             p4 = min([1, max([e1, e2, val])])
 
             p5 = max([e1, e2])
@@ -298,23 +323,23 @@ def create_sample_pair(T1_rows,
             pval[0, 1] = max([
                 h(p1, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
                 h(p1, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-            ])
+            ]) if p1 != 0 else 0
             pval[1, 1] = max([
                 h(p2, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
                 h(p2, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-            ])
+            ]) if p2 != 0 else 0
             pval[2, 1] = max([
                 h(p3, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
                 h(p3, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-            ])
+            ]) if p3 != 0 else 0
             pval[3, 1] = max([
                 h(p4, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
                 h(p4, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-            ])
+            ]) if p4 != 0 else 0
             pval[4, 1] = max([
                 h(p5, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
                 h(p5, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-            ])
+            ]) if p5 != 0 else 0
             check_real = np.isreal(pval[:, 0])
             pval = np.delete(pval, np.argwhere(check_real is False), 0)
             pval = np.delete(pval, np.argwhere(pval[:, 0] < max([e1, e2])), 0)
@@ -322,21 +347,39 @@ def create_sample_pair(T1_rows,
             p = pval[m, 0]
         else:
             print('Unsupported type: {}'.format(type))
+            raise ValueError
 
     q1 = e1 / p
     q2 = e2 / p
 
     print("p = {:.3f}".format(p))
 
+    dir = "{}/{}n_{}k/{}_{}/{}".format(sample_dir, T1_rows, T1_keys, leftDist,
+                                       rightDist, type)
+    pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
+
+    # clear resources
+    del a_v, b_v, mu_v, var_v, gr, keys, means, vars
+    gc.collect()
+
+    T1_extra = np.zeros((T1_rows, 2))
+    T2_extra = np.zeros((T2_rows, 2))
+
+    T1_new = np.hstack((T1, T1_extra))
+    T2_new = np.hstack((T2, T2_extra))
+
+    print("Starting to write {} samples @ {} in: {}".format(
+        num_samples, str(datetime.datetime.now()), dir),
+          flush=True)
+
+    start = time.time()
+
     for s in range(1, num_samples + 1):
-        dir = "{}/{}n_{}k/{}_{}/{}".format(sample_dir, T1_rows, T1_keys,
-                                           leftDist, rightDist, type)
-        pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
 
         S1_name = "{}/s1_{}.npy".format(dir, s)
         S2_name = "{}/s2_{}.npy".format(dir, s)
         if os.path.exists(S1_name) and os.path.exists(S2_name):
-            print("Samples (#{}) already exist".format(s))
+            #  print("Samples (#{}) already exist".format(s))
             continue
 
         # generate random key permutation
@@ -344,13 +387,15 @@ def create_sample_pair(T1_rows,
         hash_col_idx = 3
 
         T1_perm = key_perm[T1[:, 0] - 1]
-        T1_perm.shape = (T1_rows, 1)
+        #  T1_perm.shape = (T1_rows, 1)
 
         T2_perm = key_perm[T2[:, 0] - 1]
-        T2_perm.shape = (T2_rows, 1)
+        #  T2_perm.shape = (T2_rows, 1)
 
-        T1_new = np.hstack((T1, T1_perm))
-        T2_new = np.hstack((T2, T2_perm))
+        #  T1_new = np.hstack((T1, T1_perm))
+        #  T2_new = np.hstack((T2, T2_perm))
+        T1_new[:, hash_col_idx] = T1_perm
+        T2_new[:, hash_col_idx] = T2_perm
 
         S1 = T1_new[np.where(T1_new[:, hash_col_idx] % 100000 <= (p * 100000))]
         S2 = T2_new[np.where(T2_new[:, hash_col_idx] % 100000 <= (p * 100000))]
@@ -359,8 +404,10 @@ def create_sample_pair(T1_rows,
         S2_rows = np.size(S2, 0)
 
         prob_col_idx = 4
-        S1 = np.hstack((S1, np.random.rand(S1_rows, 1)))
-        S2 = np.hstack((S2, np.random.rand(S2_rows, 1)))
+        #  S1 = np.hstack((S1, np.random.rand(S1_rows, 1)))
+        #  S2 = np.hstack((S2, np.random.rand(S2_rows, 1)))
+        S1[:, prob_col_idx] = np.random.rand(S1_rows)
+        S2[:, prob_col_idx] = np.random.rand(S2_rows)
 
         S1 = S1[np.where(S1[:, prob_col_idx] <= q1)]
         S2 = S2[np.where(S2[:, prob_col_idx] <= q2)]
@@ -380,6 +427,15 @@ def create_sample_pair(T1_rows,
 
         np.save(S1_name, S1_data)
         np.save(S2_name, S2_data)
+
+        del S1, S2, key_perm, T1_perm, T2_perm
+        gc.collect()
+
+    end = time.time()
+    print("Sample creation done (took {} s) in: {}".format(
+        str(end - start), dir),
+          flush=True)
+    return True
 
 
 def create_sample_pair_from_database(T1_schema,
@@ -715,11 +771,11 @@ def create_sample(num_rows,
     mu_v = np.zeros((num_keys, 3))
     var_v = np.zeros((num_keys, 3))
 
-    keys = np.arange(1, num_keys + 1)
-    a_v[:, 0] = keys
-    b_v[:, 0] = keys
-    mu_v[:, 0] = keys
-    var_v[:, 0] = keys
+    all_keys = np.arange(1, num_keys + 1)
+    a_v[:, 0] = all_keys
+    b_v[:, 0] = all_keys
+    mu_v[:, 0] = all_keys
+    var_v[:, 0] = all_keys
 
     conn = impaladb.connect(impala_host, impala_port)
     cur = conn.cursor()
@@ -810,7 +866,7 @@ def create_sample(num_rows,
             p = min([1, max([e1, e2, val])])
         elif type == 'sum':
             v = np.zeros((num_keys, 3))
-            v[:, 0] = keys
+            v[:, 0] = all_keys
             #  v(:,2) = a_v(:,3) .* mu_v(:,3);
             #  v(:,3) = a_v(:,2) .* (mu_v(:,3) + var_v(:,2));
             #  [m1 v1] = max(v(:,2));
@@ -832,8 +888,11 @@ def create_sample(num_rows,
                 h_const(e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
             ]
             r = np.roots(eq)
-            p1 = r[0]
-            p2 = r[1]
+            p1 = 0
+            p2 = 0
+            if len(r) == 2:
+                p1 = r[0]
+                p2 = r[1]
 
             #  % calculate first sum in the formula
             #  sum1 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b^2);

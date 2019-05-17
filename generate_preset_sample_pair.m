@@ -2,6 +2,8 @@ function generate_preset_sample_pair(nRows, nKeys, leftDist, rightDist, p, q, nu
 
   global cache;
   
+  sample_dir = '/Volumes/HP_SimpleSave/approxjoin_data/preset_sample_data/';
+  % sample_dir = './preset_sample_data/';
   leftFile = ['./raw_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_1.csv'];
   rightFile = ['./raw_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' rightDist '_2.csv'];
   
@@ -34,8 +36,8 @@ function generate_preset_sample_pair(nRows, nKeys, leftDist, rightDist, p, q, nu
   q2 = q;
 
   for sampleIdx = 1:num_sample
-    leftSample = ['./preset_sample_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' num2str(p) '_' num2str(q) '_s1_' num2str(sampleIdx) '.mat'];
-    rightSample = ['./preset_sample_data/' num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' num2str(p) '_' num2str(q) '_s2_' num2str(sampleIdx) '.mat'];
+    leftSample = [sample_dir num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' num2str(p) '_' num2str(q) '_s1_' num2str(sampleIdx) '.mat'];
+    rightSample = [sample_dir num2str(nRows) 'n_' num2str(nKeys) 'k_' leftDist '_' rightDist '_' num2str(p) '_' num2str(q) '_s2_' num2str(sampleIdx) '.mat'];
     
     % check whether sample file already exists
     if isfile(leftSample) && isfile(rightSample)
