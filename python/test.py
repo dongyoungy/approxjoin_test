@@ -11,7 +11,7 @@ from subprocess import Popen, PIPE
 
 
 def callback_error(result):
-    print("Error: " + str(result))
+    print("Error: " + str(result.__cause__), file=sys.stderr, flush=True)
     msg = MIMEText("N/A")
     msg["From"] = "dyoon@umich.edu"
     msg["To"] = "dyoon@umich.edu"
@@ -43,7 +43,7 @@ def callback_success(result):
 #  t = timeit.timeit(stmt=s, setup=setup, number=1)
 #  print("[{0}, {1}, {2}] = {3} s".format(dist, type, d, t))
 
-num_proc = 16
+num_proc = 10
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 #  for k in [1000 * 1000, 10 * 1000 * 1000]:
@@ -95,12 +95,13 @@ dists.append(('uniform', 'uniform_max_var'))
 dists.append(('normal', 'normal_max_var'))
 dists.append(('powerlaw', 'powerlaw_max_var'))
 aggs = ['count', 'sum']
-for num_row in [10 * 1000 * 1000]:
-    for num_key in [1 * 1000 * 1000]:
-        for dist in dists:
-            for agg in aggs:
-                args.append((num_row, num_key, num_row, num_key, dist[0],
-                             dist[1], agg, 3000, False))
+
+#  for num_row in [10 * 1000 * 1000]:
+#  for num_key in [1 * 1000 * 1000]:
+#  for dist in dists:
+#  for agg in aggs:
+#  args.append((num_row, num_key, num_row, num_key, dist[0],
+#  dist[1], agg, 3000, False))
 
 preset_args = []
 prob = []
@@ -111,12 +112,36 @@ prob.append((0.333, 0.03))
 prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
+# for preset(baseline))
+
+#  for num_row in [10 * 1000 * 1000]:
+#  for num_key in [1 * 1000 * 1000]:
+#  for dist in dists:
+#  for p in prob:
+#  preset_args.append(
+#  (num_row, num_key, dist[0], dist[1], p[0], p[1], 3000))
+
+where_args = []
+#  rel_types = ['uniform', 'positive', 'negative']
+rel_types = ['uniform', 'positive', 'negative']
+
+#  for num_row in [10 * 1000 * 1000]:
+#  for num_key in [1 * 1000 * 1000]:
+#  for dist in cen_dists:
+#  for rel_type in rel_types:
+#  where_args.append((num_row, num_key, num_row, num_key, dist[0],
+#  dist[1], 'uniform', rel_type, num_samples))
+
+where_preset_args = []
+
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
-        for dist in dists:
+        for dist in cen_dists:
             for p in prob:
-                preset_args.append(
-                    (num_row, num_key, dist[0], dist[1], p[0], p[1], 3000))
+                for rel_type in rel_types:
+                    where_preset_args.append(
+                        (num_row, num_key, dist[0], dist[1], p[0], p[1],
+                         rel_type, num_samples))
 
 results = []
 
@@ -134,17 +159,19 @@ for arg in preset_args:
                          callback=callback_success,
                          error_callback=callback_error))
 
-#  for num_row in [10 * 1000 * 1000]:
-#  for num_key in [10 * 1000 * 1000]:
-#  for dist in dists:
-#  for agg in aggs:
-#  for is_centralized in is_centralized_list:
-#  for s in range(1, num_samples + 1):
-#  args.append((num_row, num_key, dist[0], dist[1], agg,
-#  s, is_centralized))
-#
-#  pool = mp.Pool(8)
-#  results = pool.starmap(cal.estimate_agg, args)
+for arg in where_args:
+    results.append(
+        pool.apply_async(sg.create_sample_pair_count_with_cond,
+                         arg,
+                         callback=callback_success,
+                         error_callback=callback_error))
+
+for arg in where_preset_args:
+    results.append(
+        pool.apply_async(sg.create_preset_sample_pair_with_cond,
+                         arg,
+                         callback=callback_success,
+                         error_callback=callback_error))
 
 pool.close()
 pool.join()

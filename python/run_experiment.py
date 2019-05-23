@@ -10,10 +10,11 @@ from subprocess import PIPE, Popen
 import numpy as np
 
 import calculate_agg as cal
+import Cond
 
 
 def callback_error(result):
-    print("Error: " + str(result))
+    print("Error: " + str(result.__cause__), file=sys.stderr, flush=True)
     msg = MIMEText("N/A")
     msg["From"] = "dyoon@umich.edu"
     msg["To"] = "dyoon@umich.edu"
@@ -30,10 +31,12 @@ def callback_success(result):
 cen_result_path = '/home/dyoon/work/approxjoin_test/results/centralized'
 dec_result_path = '/home/dyoon/work/approxjoin_test/results/decentralized'
 preset_result_path = '/home/dyoon/work/approxjoin_test/results/preset'
+cond_result_path = '/home/dyoon/work/approxjoin_test/results/with_cond'
 
 pathlib.Path(cen_result_path).mkdir(parents=True, exist_ok=True)
 pathlib.Path(dec_result_path).mkdir(parents=True, exist_ok=True)
 pathlib.Path(preset_result_path).mkdir(parents=True, exist_ok=True)
+pathlib.Path(cond_result_path).mkdir(parents=True, exist_ok=True)
 
 ts = time.time()
 time_str = datetime.datetime.fromtimestamp(ts).strftime('%Y%m%d_%H%M%S')
@@ -45,6 +48,8 @@ our_cen_results = defaultdict(list)
 our_dec_results = defaultdict(list)
 cen_preset_results = defaultdict(list)
 dec_preset_results = defaultdict(list)
+cond_results = defaultdict(list)
+cond_preset_results = defaultdict(list)
 
 cen_dists = []
 
@@ -82,6 +87,8 @@ cen_args = []
 dec_args = []
 cen_preset_args = []
 dec_preset_args = []
+cond_args = []
+cond_preset_args = []
 
 prob = []
 prob.append((0.01, 1))
@@ -115,6 +122,7 @@ for num_row in [10 * 1000 * 1000]:
 '''
 
 # decentralized setting
+'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in dec_dists:
@@ -122,8 +130,10 @@ for num_row in [10 * 1000 * 1000]:
                 for s in range(1, dec_num_samples + 1):
                     dec_args.append(
                         (num_row, num_key, dist[0], dist[1], agg, s, False))
+'''
 
 # decentralized setting (preset)
+'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in dec_dists:
@@ -132,6 +142,38 @@ for num_row in [10 * 1000 * 1000]:
                     for s in range(1, dec_num_samples + 1):
                         dec_preset_args.append((num_row, num_key, dist[0],
                                                 dist[1], agg, p[0], p[1], s))
+'''
+
+#  var_dists = ['uniform', 'identical']
+var_dists = ['uniform']
+rel_types = ['uniform', 'positive', 'negative']
+
+# centralized setting with cond (WHERE)
+for num_row in [10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
+        for dist in cen_dists:
+            for var_dist in var_dists:
+                for rel_type in rel_types:
+                    for s in range(1, cen_num_samples + 1):
+                        for c in range(0, 10):
+                            cond = Cond.Cond(2, '=', c)
+                            cond_args.append(
+                                (num_row, num_key, dist[0], dist[1], var_dist,
+                                 rel_type, s, cond, True))
+
+# centralized setting with cond (WHERE, preset)
+for num_row in [10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
+        for dist in cen_dists:
+            for var_dist in var_dists:
+                for rel_type in rel_types:
+                    for p in prob:
+                        for s in range(1, cen_num_samples + 1):
+                            for c in range(0, 10):
+                                cond = Cond.Cond(2, '=', c)
+                                cond_preset_args.append(
+                                    (num_row, num_key, dist[0], dist[1], p[0],
+                                     p[1], rel_type, s, cond))
 
 if cen_args:
     cen_results = pool.starmap(cal.estimate_agg, cen_args)
@@ -174,6 +216,27 @@ if dec_preset_args:
         result_file = "{}/dec_preset_results_{}.npy".format(
             preset_result_path, time_str)
         np.save(result_file, dec_preset_results)
+
+results = []
+if cond_args:
+    results = pool.starmap(cal.estimate_count_with_cond, cond_args)
+    for r in results:
+        cond_results[r[0:9]].append(r[-1])
+    if cond_results:
+        result_file = "{}/our_cond_results_{}.npy".format(
+            cond_result_path, time_str)
+        np.save(result_file, cond_results)
+
+results = []
+if cond_preset_args:
+    results = pool.starmap(cal.estimate_preset_count_with_cond,
+                           cond_preset_args)
+    for r in results:
+        cond_preset_results[r[0:10]].append(r[-1])
+    if cond_preset_results:
+        result_file = "{}/preset_cond_results_{}.npy".format(
+            cond_result_path, time_str)
+        np.save(result_file, cond_preset_results)
 
 pool.close()
 pool.join()

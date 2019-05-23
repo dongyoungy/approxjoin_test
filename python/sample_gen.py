@@ -4,6 +4,7 @@ import math
 import time
 import pathlib
 import datetime
+import MemDB
 
 import impala.dbapi as impaladb
 import numpy as np
@@ -27,6 +28,107 @@ def reset_schema():
     cur = conn.cursor()
     cur.execute("DROP SCHEMA IF EXISTS {0} CASCADE".format(sample_schema))
     cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(sample_schema))
+
+
+def create_preset_sample_pair_with_cond(num_rows, num_keys, leftDist,
+                                        rightDist, p, q, rel_type, num_sample):
+    np.random.seed(int(time.time()))
+    sample_dir = data_path + 'preset_samples/with_cond'
+    pathlib.Path(sample_dir).mkdir(parents=True, exist_ok=True)
+
+    T1_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}_{4}.csv".format(
+        num_rows, num_keys, leftDist, rel_type, 1)
+    T2_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
+        num_rows, num_keys, rightDist, 2)
+
+    # read table files
+    T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
+    # drop dummy col
+    #  T1_df = T1_df.drop(columns=[3])
+    T1 = T1_df.values
+    T1 = T1.astype(int)
+
+    T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
+    #  T2_df = T2_df.drop(columns=[3])
+    T2 = T2_df.values
+    T2 = T2.astype(int)
+
+    q1 = e1 / p
+    q2 = e2 / p
+
+    dir = "{}/{}n_{}k/{}_{}/{}/{:.3f}_{:.3f}/".format(sample_dir, num_rows,
+                                                      num_keys, leftDist,
+                                                      rightDist, rel_type, p,
+                                                      q)
+    pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
+
+    T1_extra = np.zeros((num_rows, 2))
+    T2_extra = np.zeros((num_rows, 2))
+
+    T1_new = np.hstack((T1, T1_extra))
+    T2_new = np.hstack((T2, T2_extra))
+
+    print("Starting to write {} samples @ {} in: {}".format(
+        num_sample, str(datetime.datetime.now()), dir),
+          flush=True)
+
+    start = time.time()
+
+    for s in range(1, num_sample + 1):
+
+        S1_name = "{}/s1_{}.npy".format(dir, s)
+        S2_name = "{}/s2_{}.npy".format(dir, s)
+        if os.path.exists(S1_name) and os.path.exists(S2_name):
+            #  print("Samples (#{}) already exist".format(s))
+            continue
+
+        # generate random key permutation
+        key_perm = np.random.permutation(num_keys) + 1
+        hash_col_idx = 3
+
+        T1_perm = key_perm[T1[:, 0] - 1]
+        T2_perm = key_perm[T2[:, 0] - 1]
+
+        T1_new[:, hash_col_idx] = T1_perm
+        T2_new[:, hash_col_idx] = T2_perm
+
+        S1 = T1_new[np.where(T1_new[:, hash_col_idx] % 100000 <= (p * 100000))]
+        S2 = T2_new[np.where(T2_new[:, hash_col_idx] % 100000 <= (p * 100000))]
+
+        S1_rows = np.size(S1, 0)
+        S2_rows = np.size(S2, 0)
+
+        prob_col_idx = 4
+        S1[:, prob_col_idx] = np.random.rand(S1_rows)
+        S2[:, prob_col_idx] = np.random.rand(S2_rows)
+
+        S1 = S1[np.where(S1[:, prob_col_idx] <= q1)]
+        S2 = S2[np.where(S2[:, prob_col_idx] <= q2)]
+
+        S1 = S1[:, 0:3]
+        S2 = S2[:, 0:3]
+
+        S1_data = {}
+        S1_data['sample'] = S1
+        S1_data['p'] = p
+        S1_data['q'] = q
+
+        S2_data = {}
+        S2_data['sample'] = S2
+        S2_data['p'] = p
+        S2_data['q'] = q
+
+        np.save(S1_name, S1_data)
+        np.save(S2_name, S2_data)
+
+        del S1, S2, key_perm, T1_perm, T2_perm
+        gc.collect()
+
+    end = time.time()
+    print("Sample creation done (took {} s) in: {}".format(
+        str(end - start), dir),
+          flush=True)
+    return True
 
 
 def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
@@ -455,8 +557,9 @@ def create_sample_pair_from_database(T1_schema,
         d = 'dec'
 
     S1_name = "s_{}_{}_{}_{}_{}_{}_{}".format(T1_schema, T1_table, T1_join_col,
-                                                 T1_agg_col, type, d, 1)
-    S2_name = "s_{}_{}_{}_{}_{}_{}".format(T2_schema, T2_table, T2_join_col, type, d, 2)
+                                              T1_agg_col, type, d, 1)
+    S2_name = "s_{}_{}_{}_{}_{}_{}".format(T2_schema, T2_table, T2_join_col,
+                                           type, d, 2)
 
     conn = impaladb.connect(impala_host, impala_port)
     cur = conn.cursor()
@@ -730,14 +833,16 @@ def create_sample_pair_from_database(T1_schema,
     FROM {2}.{3}
     ) tmp
     WHERE pval <= {4} * 100000 and qval <= {5}
-    """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1, ts, T1_join_col)
+    """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1, ts,
+               T1_join_col)
 
     create_S2_sql = """CREATE TABLE {0}.{1} STORED AS PARQUET AS SELECT * FROM (
     SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 100000) as pval
     FROM {2}.{3}
     ) tmp
     WHERE pval <= {4} * 100000 and qval <= {5}
-    """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2, ts, T2_join_col)
+    """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2, ts,
+               T2_join_col)
 
     cur = conn.cursor()
     cur.execute(create_S1_sql)
@@ -1009,6 +1114,206 @@ def create_sample(num_rows,
 
     cur.execute(create_S1_sql)
     cur.execute(create_S2_sql)
+
+
+def create_sample_pair_count_with_cond(
+        T1_rows,
+        T1_keys,
+        T2_rows,
+        T2_keys,
+        leftDist,
+        rightDist,
+        type,  # dist. of conditon var
+        rel_type,
+        num_samples,
+        isCentralized=True):
+    np.random.seed(int(time.time()))
+    dir = data_path + 'our_samples/with_cond/'
+    d = ''
+    if isCentralized:
+        d = 'centralized'
+    else:
+        d = 'decentralized'
+
+    sample_dir = dir + d + '/'
+    pathlib.Path(sample_dir).mkdir(parents=True, exist_ok=True)
+
+    T1_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}_{4}.csv".format(
+        T1_rows, T1_keys, leftDist, rel_type, 1)
+    T2_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
+        T2_rows, T2_keys, rightDist, 2)
+
+    num_keys = max([T1_keys, T2_keys])
+
+    # read table files
+    T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
+    # drop dummy col
+    #  T1_df = T1_df.drop(columns=[3])
+    T1 = T1_df.values
+    T1 = T1.astype(int)
+
+    T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
+    #  T2_df = T2_df.drop(columns=[3])
+    T2 = T2_df.values
+    T2 = T2.astype(int)
+
+    a_v = np.zeros((num_keys, 10, 2))
+    b_v = np.zeros((num_keys, 3))
+    mu_v = np.zeros((num_keys, 10, 2))
+    var_v = np.zeros((num_keys, 10, 1))
+
+    all_keys = np.arange(1, num_keys + 1)
+    #  a_v[:, 0] = all_keys
+    b_v[:, 0] = all_keys
+    #  mu_v[:, 0] = all_keys
+    #  var_v[:, 0] = all_keys
+
+
+    # get mean and var
+    gr = T1_df.groupby([0, 2])
+    keys = np.array(list(gr.groups.keys()))
+    counts = np.array(gr.count().values)
+    means = np.array(gr[1].mean().values)
+    vars = np.array(np.nan_to_num(gr[1].var().values))
+
+    a_v[keys[:, 0].astype(int) - 1, keys[:, 1].astype(int), 0] = counts[:, 0]
+    a_v[:, :, 1] = a_v[:, :, 0]**2
+
+    mu_v[keys[:, 0].astype(int) - 1, keys[:, 1].astype(int), 0] = means
+    mu_v[:, :, 1] = mu_v[:, :, 0]**2
+
+    var_v[keys[:, 0].astype(int) - 1, keys[:, 1].astype(int), 0] = vars
+
+    if isCentralized:
+        # get group count for T2
+        counts = np.array(np.unique(T2[:, 0], return_counts=True)).T
+        b_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
+        b_v[:, 2] = b_v[:, 1]**2
+
+        if type == 'uniform':
+            sum1 = 0
+            sum2 = 0
+            for i in range(0, 10):
+                #  a_temp = np.sum(a_v[:, i, :], axis=1)
+                a_temp = a_v[:, i, :]
+                sum1 += sum(a_temp[:, 1] * b_v[:, 2] -
+                            a_temp[:, 1] * b_v[:, 1] -
+                            a_temp[:, 0] * b_v[:, 2] +
+                            a_temp[:, 0] * b_v[:, 1])
+                sum2 += sum(a_temp[:, 0] * b_v[:, 1])
+            val = math.sqrt(e1 * e2 * sum1 / sum2)
+            p = min([1, max([e1, e2, val])])
+        elif type == 'identical':
+            # get group count for C
+            counts = np.array(np.unique(T1[:, 2], return_counts=True)).T
+            c_v = np.zeros((10, 1))
+            c_v[counts[:, 0].astype(int), 1] = counts[:, 1]
+            c_total = np.sum(c_v)
+            for i in range(0, 10):
+                #  a_temp = np.sum(a_v[:, i, :], axis=1)
+                a_temp = a_v[:, i, :]
+                c = c_v[i] / c_total
+                sum1 += c * sum(a_temp[:, 1] * b_v[:, 2] -
+                            a_temp[:, 1] * b_v[:, 1] -
+                            a_temp[:, 0] * b_v[:, 2] +
+                            a_temp[:, 0] * b_v[:, 1])
+                sum2 += c * sum(a_temp[:, 0] * b_v[:, 1])
+            val = math.sqrt(e1 * e2 * sum1 / sum2)
+            p = min([1, max([e1, e2, val])])
+        else:
+            print('Unsupported type: {}'.format(type))
+            raise ValueError
+    else:
+        print("Decentralized not supported yet")
+        raise ValueError
+
+    q1 = e1 / p
+    q2 = e2 / p
+
+    print("p = {:.3f}".format(p))
+
+    dir = "{}/{}n_{}k/{}_{}/{}_{}".format(sample_dir, T1_rows, T1_keys,
+                                          leftDist, rightDist, type, rel_type)
+    pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
+
+    # clear resources
+    del a_v, b_v, mu_v, var_v, gr, keys, means, vars
+    gc.collect()
+
+    T1_extra = np.zeros((T1_rows, 2))
+    T2_extra = np.zeros((T2_rows, 2))
+
+    T1_new = np.hstack((T1, T1_extra))
+    T2_new = np.hstack((T2, T2_extra))
+
+    print("Starting to write {} samples @ {} in: {}".format(
+        num_samples, str(datetime.datetime.now()), dir),
+          flush=True)
+
+    start = time.time()
+
+    for s in range(1, num_samples + 1):
+
+        S1_name = "{}/s1_{}.npy".format(dir, s)
+        S2_name = "{}/s2_{}.npy".format(dir, s)
+        if os.path.exists(S1_name) and os.path.exists(S2_name):
+            #  print("Samples (#{}) already exist".format(s))
+            continue
+
+        # generate random key permutation
+        key_perm = np.random.permutation(num_keys) + 1
+        hash_col_idx = 3
+
+        T1_perm = key_perm[T1[:, 0].astype(int) - 1]
+        #  T1_perm.shape = (T1_rows, 1)
+
+        T2_perm = key_perm[T2[:, 0].astype(int) - 1]
+        #  T2_perm.shape = (T2_rows, 1)
+
+        #  T1_new = np.hstack((T1, T1_perm))
+        #  T2_new = np.hstack((T2, T2_perm))
+        T1_new[:, hash_col_idx] = T1_perm
+        T2_new[:, hash_col_idx] = T2_perm
+
+        S1 = T1_new[np.where(T1_new[:, hash_col_idx] % 100000 <= (p * 100000))]
+        S2 = T2_new[np.where(T2_new[:, hash_col_idx] % 100000 <= (p * 100000))]
+
+        S1_rows = np.size(S1, 0)
+        S2_rows = np.size(S2, 0)
+
+        prob_col_idx = 4
+        #  S1 = np.hstack((S1, np.random.rand(S1_rows, 1)))
+        #  S2 = np.hstack((S2, np.random.rand(S2_rows, 1)))
+        S1[:, prob_col_idx] = np.random.rand(S1_rows)
+        S2[:, prob_col_idx] = np.random.rand(S2_rows)
+
+        S1 = S1[np.where(S1[:, prob_col_idx] <= q1)]
+        S2 = S2[np.where(S2[:, prob_col_idx] <= q2)]
+
+        S1 = S1[:, 0:3]
+        S2 = S2[:, 0:3]
+
+        S1_data = {}
+        S1_data['sample'] = S1
+        S1_data['p'] = p
+        S1_data['q'] = q1
+
+        S2_data = {}
+        S2_data['sample'] = S2
+        S2_data['p'] = p
+        S2_data['q'] = q2
+
+        np.save(S1_name, S1_data)
+        np.save(S2_name, S2_data)
+
+        del S1, S2, key_perm, T1_perm, T2_perm
+        gc.collect()
+
+    end = time.time()
+    print("Sample creation done (took {} s) in: {}".format(
+        str(end - start), dir),
+          flush=True)
+    return True
 
 
 def h(p, e1, e2, a, b, mu, sig):
