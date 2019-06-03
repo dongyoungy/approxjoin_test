@@ -123,17 +123,20 @@ prob.append((1, 0.01))
 
 where_args = []
 #  rel_types = ['uniform', 'positive', 'negative']
-rel_types = ['uniform', 'positive', 'negative']
+rel_types = ['uniform', 'normal', 'powerlaw']
+types = ['uniform', 'identical']
+num_pred_val = 10
 
-#  for num_row in [10 * 1000 * 1000]:
-#  for num_key in [1 * 1000 * 1000]:
-#  for dist in cen_dists:
-#  for rel_type in rel_types:
-#  where_args.append((num_row, num_key, num_row, num_key, dist[0],
-#  dist[1], 'uniform', rel_type, num_samples))
+for num_row in [10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
+        for dist in cen_dists:
+            for type in types:
+                for rel_type in rel_types:
+                    where_args.append(
+                        (num_row, num_key, num_row, num_key, dist[0], dist[1],
+                         type, rel_type, num_pred_val, num_samples))
 
 where_preset_args = []
-
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in cen_dists:
@@ -142,7 +145,6 @@ for num_row in [10 * 1000 * 1000]:
                     where_preset_args.append(
                         (num_row, num_key, dist[0], dist[1], p[0], p[1],
                          rel_type, num_samples))
-
 results = []
 
 for arg in args:

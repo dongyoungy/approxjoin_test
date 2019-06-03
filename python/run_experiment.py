@@ -145,8 +145,11 @@ for num_row in [10 * 1000 * 1000]:
 '''
 
 #  var_dists = ['uniform', 'identical']
-var_dists = ['uniform']
-rel_types = ['uniform', 'positive', 'negative']
+var_dists = ['uniform', 'identical']
+rel_types = ['uniform', 'normal', 'powerlaw']
+conds = []
+for c in range(0, 10):
+    conds.append(Cond.Cond(2, '=', c))
 
 # centralized setting with cond (WHERE)
 for num_row in [10 * 1000 * 1000]:
@@ -170,7 +173,7 @@ for num_row in [10 * 1000 * 1000]:
                     for p in prob:
                         for s in range(1, cen_num_samples + 1):
                             for c in range(0, 10):
-                                cond = Cond.Cond(2, '=', c)
+                                cond = conds[c]
                                 cond_preset_args.append(
                                     (num_row, num_key, dist[0], dist[1], p[0],
                                      p[1], rel_type, s, cond))

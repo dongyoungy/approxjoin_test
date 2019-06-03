@@ -8,8 +8,8 @@ from cachetools import LRUCache, cached
 
 from estimate_result import EstimateResult
 
-actual_cache = LRUCache(maxsize=4 * 1024)
-estimate_cache = LRUCache(maxsize=16 * 1024)
+actual_cache = LRUCache(maxsize=16 * 1024)
+estimate_cache = LRUCache(maxsize=64 * 1024)
 lock = RLock()
 data_path = '/home/dyoon/work/approxjoin_data/'
 

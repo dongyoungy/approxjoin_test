@@ -4,6 +4,14 @@ class Cond:
         self.op = op
         self.value = value
 
+    def __eq__(self, other):
+        if isinstance(other, Cond):
+            return self.col_idx == other.col_idx and self.op == other.op and self.value == other.value
+        return False
+
+    def __hash__(self):
+        return hash(self.col_idx) + hash(self.op) + hash(self.value)
+
     def apply_df(self, df):
         new_df = None
         if self.op == '=':

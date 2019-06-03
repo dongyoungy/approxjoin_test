@@ -367,6 +367,7 @@ def create_table_data_for_where(
         num_keys,
         type,
         rel_type,  # relation between join key and predicate column
+        num_pred_val,
         n,
         with_dummy=False,
         overwrite=False):
@@ -488,21 +489,37 @@ def create_table_data_for_where(
         val1 = np.random.normal(100, 25, current_batch_size).astype(int)
         err = np.random.normal(0, 100, current_batch_size).astype(int)
         if rel_type == 'uniform':
-            val2 = np.random.randint(0, 10, current_batch_size)
+            val2 = np.random.randint(0, num_pred_val, current_batch_size)
+        elif rel_type == 'normal':
+            r = num_pred_val / 2
+            scale = num_pred_val / 10
+            val2 = ss.truncnorm(a=-r / scale, b=r / scale,
+            scale=scale).rvs(current_batch_size)
+            val2 = val2 + r
+            val2 = val2.round().astype(int)
+        elif rel_type == 'powerlaw':
+            alpha = -1.5
+            minv = 1
+            maxv = num_pred_val + 1
+            rand_keys = np.array(np.random.random(size=current_batch_size))
+            val2 = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+                    minv**(alpha + 1))**(1 / (alpha + 1))
+            val2 = [math.floor(k) - 1 for k in val2]
         elif rel_type == 'positive':
-            val2 = np.floor((keys + err) / (num_keys / 10))
+            val2 = np.floor((keys + err) / (num_keys / num_pred_val))
         elif rel_type == 'negative':
-            val2 = np.floor(((num_keys + 1) - keys + err) / (num_keys / 10))
+            val2 = np.floor(
+                ((num_keys + 1) - keys + err) / (num_keys / num_pred_val))
         else:
             print("Unsupportd relation type: {}".format(rel_type))
             return
 
-        val2[val2 < 0] = 0
-        val2[val2 > 9] = 9
-
         val1 = np.array(val1)
         val2 = np.array(val2)
         val3 = np.array(val3)
+
+        val2[val2 < 0] = 0
+        val2[val2 > num_pred_val - 1] = num_pred_val - 1
 
         keys.shape = (current_batch_size, 1)
         val1.shape = (current_batch_size, 1)

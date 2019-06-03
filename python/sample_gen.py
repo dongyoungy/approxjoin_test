@@ -1125,6 +1125,7 @@ def create_sample_pair_count_with_cond(
         rightDist,
         type,  # dist. of conditon var
         rel_type,
+        num_pred_val,
         num_samples,
         isCentralized=True):
     np.random.seed(int(time.time()))
@@ -1157,17 +1158,16 @@ def create_sample_pair_count_with_cond(
     T2 = T2_df.values
     T2 = T2.astype(int)
 
-    a_v = np.zeros((num_keys, 10, 2))
+    a_v = np.zeros((num_keys, num_pred_val, 2))
     b_v = np.zeros((num_keys, 3))
-    mu_v = np.zeros((num_keys, 10, 2))
-    var_v = np.zeros((num_keys, 10, 1))
+    mu_v = np.zeros((num_keys, num_pred_val, 2))
+    var_v = np.zeros((num_keys, num_pred_val, 1))
 
     all_keys = np.arange(1, num_keys + 1)
     #  a_v[:, 0] = all_keys
     b_v[:, 0] = all_keys
     #  mu_v[:, 0] = all_keys
     #  var_v[:, 0] = all_keys
-
 
     # get mean and var
     gr = T1_df.groupby([0, 2])
@@ -1190,14 +1190,15 @@ def create_sample_pair_count_with_cond(
         b_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
         b_v[:, 2] = b_v[:, 1]**2
 
+        sum1 = 0
+        sum2 = 0
+
         if type == 'uniform':
-            sum1 = 0
-            sum2 = 0
-            for i in range(0, 10):
+            for i in range(0, num_pred_val):
                 #  a_temp = np.sum(a_v[:, i, :], axis=1)
                 a_temp = a_v[:, i, :]
-                sum1 += sum(a_temp[:, 1] * b_v[:, 2] -
-                            a_temp[:, 1] * b_v[:, 1] -
+                sum1 += sum(a_temp[:, 1] * b_v[:, 2] +
+                            a_temp[:, 1] * b_v[:, 1] +
                             a_temp[:, 0] * b_v[:, 2] +
                             a_temp[:, 0] * b_v[:, 1])
                 sum2 += sum(a_temp[:, 0] * b_v[:, 1])
@@ -1206,17 +1207,18 @@ def create_sample_pair_count_with_cond(
         elif type == 'identical':
             # get group count for C
             counts = np.array(np.unique(T1[:, 2], return_counts=True)).T
-            c_v = np.zeros((10, 1))
-            c_v[counts[:, 0].astype(int), 1] = counts[:, 1]
+            c_v = np.zeros((num_pred_val, 1))
+            #  c_v[counts[:, 0].astype(int), 1] = counts[:, 1]
+            c_v[counts[:, 0], 0] = counts[:, 1]
+            #  print(c_v.T)
             c_total = np.sum(c_v)
-            for i in range(0, 10):
+            for i in range(0, num_pred_val):
                 #  a_temp = np.sum(a_v[:, i, :], axis=1)
                 a_temp = a_v[:, i, :]
                 c = c_v[i] / c_total
-                sum1 += c * sum(a_temp[:, 1] * b_v[:, 2] -
-                            a_temp[:, 1] * b_v[:, 1] -
-                            a_temp[:, 0] * b_v[:, 2] +
-                            a_temp[:, 0] * b_v[:, 1])
+                sum1 += c * sum(a_temp[:, 1] * b_v[:, 2] + a_temp[:, 1] *
+                                b_v[:, 1] + a_temp[:, 0] * b_v[:, 2] +
+                                a_temp[:, 0] * b_v[:, 1])
                 sum2 += c * sum(a_temp[:, 0] * b_v[:, 1])
             val = math.sqrt(e1 * e2 * sum1 / sum2)
             p = min([1, max([e1, e2, val])])
@@ -1227,10 +1229,12 @@ def create_sample_pair_count_with_cond(
         print("Decentralized not supported yet")
         raise ValueError
 
+    print("sum1 = {}, sum2 = {}".format(sum1, sum2))
+
     q1 = e1 / p
     q2 = e2 / p
 
-    print("p = {:.3f}".format(p))
+    print("p = {:.3f}, q = {:.3f}".format(p, q1))
 
     dir = "{}/{}n_{}k/{}_{}/{}_{}".format(sample_dir, T1_rows, T1_keys,
                                           leftDist, rightDist, type, rel_type)

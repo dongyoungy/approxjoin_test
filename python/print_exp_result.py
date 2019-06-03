@@ -1,5 +1,131 @@
 import numpy as np
+import pandas as pd
 from collections import defaultdict
+from cachetools import LRUCache, cached
+
+dist_pairs = []
+dist_pairs.append(('uniform', 'uniform'))
+dist_pairs.append(('uniform', 'normal'))
+dist_pairs.append(('uniform', 'powerlaw'))
+dist_pairs.append(('normal', 'normal'))
+dist_pairs.append(('normal', 'powerlaw'))
+var_dists = ['uniform', 'normal', 'powerlaw']
+cond_dists = ['uniform', 'identical']
+
+probs = []
+probs.append((0.01, 1))
+probs.append((0.015, 0.666))
+probs.append((0.03, 0.333))
+probs.append((0.333, 0.03))
+probs.append((0.666, 0.015))
+probs.append((1, 0.01))
+
+raw_data_path = '/home/dyoon/work/approxjoin_data/raw_data'
+
+dist_cache = LRUCache(maxsize=16 * 1024)
+
+
+@cached(dist_cache)
+def get_dist_of_X(num_rows, num_keys, dist, rel_type):
+    T1_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}_{4}.csv".format(
+        num_rows, num_keys, dist, rel_type, 1)
+    # read table files
+    T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
+    T1 = T1_df.values
+    T1 = T1.astype(int)
+    gr = T1_df.groupby([2])
+    counts = np.array(gr.count().values)
+    return counts[:, 0]
+
+
+def print_our_results_with_cond(results, actual_cond_dist='uniform'):
+    results = results[()]
+    new_results = defaultdict(dict)
+
+    if actual_cond_dist == 'identical':
+        pass
+
+    for k in results.keys():
+        if k == 0:
+            continue
+        result = results[k]
+
+        # we need (left, right, var_dist, rel_type, cond_val) as key?
+        new_key = (k[2], k[3], k[5], k[6], k[7])
+        if new_key not in new_results:
+            new_results[new_key] = []
+
+        new_results[new_key].append(result[0])
+
+    for cond_dist in cond_dists:
+        for var_dist in var_dists:
+            for d in dist_pairs:
+                vars = []
+                p = 0
+                q = 0
+                if actual_cond_dist == 'identical':
+                    x_dists = get_dist_of_X(10 * 1000 * 1000, 1000 * 1000,
+                                            d[0], var_dist)
+                    x_total = np.sum(x_dists)
+                for c in range(0, 10):
+                    res = new_results[(d[0], d[1], cond_dist, var_dist, c)]
+                    estimates = []
+                    for row in res:
+                        estimates.append(row.estimate)
+                        p = row.p
+                        q = row.q
+                    if actual_cond_dist == 'uniform':
+                        vars.append(np.var(estimates))
+                    elif actual_cond_dist == 'identical':
+                        vars.append(np.var(estimates) * (x_dists[c] / x_total))
+                # if actual dist of X is uniform
+                if actual_cond_dist == 'uniform':
+                    print("{}".format(np.average(vars)), end=",")
+                elif actual_cond_dist == 'identical':
+                    print("{}".format(np.sum(vars)), end=",")
+            print()
+        print()
+        print()
+
+
+def print_preset_results_with_cond(results, actual_cond_dist='uniform'):
+    results = results[()]
+    new_results = defaultdict(dict)
+
+    for k in results.keys():
+        if k == 0:
+            continue
+        result = results[k]
+
+        # we need (left, right, p, q, rel_type, cond_val) as key?
+        new_key = (k[2], k[3], k[5], k[6], k[7], k[8])
+        if new_key not in new_results:
+            new_results[new_key] = []
+
+        new_results[new_key].append(result[0])
+
+    for v in var_dists:
+        if actual_cond_dist == 'identical':
+            x_dists = get_dist_of_X(10 * 1000 * 1000, 1000 * 1000,
+                                    'uniform', v)
+            x_total = np.sum(x_dists)
+        for p in probs:
+            vars = []
+            for c in range(0, 10):
+                res = new_results[('normal', 'normal', p[0], p[1], v, c)]
+                estimates = []
+                for row in res:
+                    estimates.append(row.estimate)
+                if actual_cond_dist == 'uniform':
+                    vars.append(np.var(estimates))
+                elif actual_cond_dist == 'identical':
+                    vars.append(np.var(estimates) * (x_dists[c] / x_total))
+            # if actual dist of X is uniform
+            if actual_cond_dist == 'uniform':
+                print("{}".format(np.average(vars)), end=",")
+            elif actual_cond_dist == 'identical':
+                print("{}".format(np.sum(vars)), end=",")
+        print()
 
 
 def print_dec_result(results):
