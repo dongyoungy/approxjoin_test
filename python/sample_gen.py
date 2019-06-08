@@ -445,6 +445,7 @@ def create_sample_pair_from_database(T1_schema,
                                      T2_schema,
                                      T2_table,
                                      T2_join_col,
+                                     T1_where,
                                      type,
                                      is_centralized=True):
     np.random.seed(int(time.time()))
@@ -455,8 +456,9 @@ def create_sample_pair_from_database(T1_schema,
         d = 'dec'
 
     S1_name = "s_{}_{}_{}_{}_{}_{}_{}".format(T1_schema, T1_table, T1_join_col,
-                                                 T1_agg_col, type, d, 1)
-    S2_name = "s_{}_{}_{}_{}_{}_{}".format(T2_schema, T2_table, T2_join_col, type, d, 2)
+                                              T1_agg_col, type, d, 1)
+    S2_name = "s_{}_{}_{}_{}_{}_{}".format(T2_schema, T2_table, T2_join_col,
+                                           type, d, 2)
 
     conn = impaladb.connect(impala_host, impala_port)
     cur = conn.cursor()
@@ -497,8 +499,9 @@ def create_sample_pair_from_database(T1_schema,
 
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(sample_schema))
-    T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}) FROM {2}.{3} GROUP BY {0};
-    """.format(T1_join_col, T1_agg_col, T1_schema, T1_table)
+    T1_where = " WHERE {}".format(T1_where) if T1_where else ""
+    T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}) FROM {2}.{3} {4} GROUP BY {0};
+    """.format(T1_join_col, T1_agg_col, T1_schema, T1_table, T1_where)
     cur.execute(T1_group_by_count_sql)
 
     while True:
@@ -570,7 +573,7 @@ def create_sample_pair_from_database(T1_schema,
             sum4 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * b_v[:, 1])
             sum5 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * b_v[:, 1])
             val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
-            val = math.sqrt(val)
+            val = math.sqrt(val) if val > 0 else val
             p = min([1, max([e1, e2, val])])
     else:
         n_b = 0
@@ -727,17 +730,19 @@ def create_sample_pair_from_database(T1_schema,
 
     create_S1_sql = """CREATE TABLE {0}.{1} STORED AS PARQUET AS SELECT * FROM (
     SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 100000) as pval
-    FROM {2}.{3}
+    FROM {2}.{3} {8}
     ) tmp
     WHERE pval <= {4} * 100000 and qval <= {5}
-    """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1, ts, T1_join_col)
+    """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1, ts,
+               T1_join_col, T1_where)
 
     create_S2_sql = """CREATE TABLE {0}.{1} STORED AS PARQUET AS SELECT * FROM (
     SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 100000) as pval
     FROM {2}.{3}
     ) tmp
     WHERE pval <= {4} * 100000 and qval <= {5}
-    """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2, ts, T2_join_col)
+    """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2, ts,
+               T2_join_col)
 
     cur = conn.cursor()
     cur.execute(create_S1_sql)
