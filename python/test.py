@@ -69,39 +69,45 @@ cen_dists.append(('normal', 'normal'))
 cen_dists.append(('normal', 'powerlaw'))
 cen_dists.append(('powerlaw', 'powerlaw'))
 
+where_dists = []
+where_dists.append(('uniform', 'uniform'))
+
 aggs = ['count', 'sum', 'avg']
 is_centralized_list = [True]
 
-num_samples = 500
+num_samples = 1000
 
 args = []
-#  for num_row in [10 * 1000 * 1000]:
-#  for num_key in [10 * 1000 * 1000]:
-#  for dist in cen_dists:
-#  for agg in aggs:
-#  for is_centralized in is_centralized_list:
-#  args.append((num_row, num_key, num_row, num_key, dist[0],
-#  dist[1], agg, num_samples, is_centralized))
+'''
+for num_row in [10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
+        for dist in cen_dists:
+            for agg in aggs:
+                for is_centralized in is_centralized_list:
+                    args.append((num_row, num_key, num_row, num_key, dist[0],
+                                 dist[1], agg, num_samples, is_centralized))
+'''
 
 # for decentralized setting
 dists = []
 for leftDist in ['uniform', 'normal', 'powerlaw']:
-    for rightDist in [
-            'uniform', 'normal', 'normal1', 'normal2', 'powerlaw', 'powerlaw1',
-            'powerlaw2'
-    ]:
+    #  for rightDist in [
+#  'uniform', 'normal', 'normal1', 'normal2', 'powerlaw', 'powerlaw1',
+#  'powerlaw2'
+#  ]:
+    for rightDist in ['uniform', 'normal', 'powerlaw']:
         dists.append((leftDist, rightDist))
 dists.append(('uniform', 'uniform_max_var'))
 dists.append(('normal', 'normal_max_var'))
 dists.append(('powerlaw', 'powerlaw_max_var'))
 aggs = ['count', 'sum']
-
-#  for num_row in [10 * 1000 * 1000]:
-#  for num_key in [1 * 1000 * 1000]:
-#  for dist in dists:
-#  for agg in aggs:
-#  args.append((num_row, num_key, num_row, num_key, dist[0],
-#  dist[1], agg, 3000, False))
+dec_aggs = ['avg']
+for num_row in [10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
+        for dist in dists:
+            for agg in dec_aggs:
+                args.append((num_row, num_key, num_row, num_key, dist[0],
+                             dist[1], agg, num_samples, False))
 
 preset_args = []
 prob = []
@@ -112,39 +118,52 @@ prob.append((0.333, 0.03))
 prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
+# for 2%
+#  prob.append((0.02, 1))
+#  prob.append((0.04, 0.5))
+#  prob.append((0.08, 0.25))
+#  prob.append((0.25, 0.08))
+#  prob.append((0.5, 0.04))
+#  prob.append((1, 0.02))
+
 # for preset(baseline))
-
-#  for num_row in [10 * 1000 * 1000]:
-#  for num_key in [1 * 1000 * 1000]:
-#  for dist in dists:
-#  for p in prob:
-#  preset_args.append(
-#  (num_row, num_key, dist[0], dist[1], p[0], p[1], 3000))
-
-where_args = []
-#  rel_types = ['uniform', 'positive', 'negative']
-rel_types = ['uniform', 'normal', 'powerlaw']
-types = ['uniform', 'identical']
-num_pred_val = 10
-
+'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
-        for dist in cen_dists:
+        for dist in dists:
+            for p in prob:
+                preset_args.append(
+                    (num_row, num_key, dist[0], dist[1], p[0], p[1], 500))
+'''
+
+where_args = []
+where_preset_args = []
+#  rel_types = ['uniform', 'positive', 'negative']
+rel_types = ['uniform', 'normal', 'powerlaw']
+#rel_types = ['uniform']
+types = ['uniform', 'identical']
+#  types = ['uniform']
+num_pred_val = 10
+'''
+for num_row in [10 * 1000 * 1000]:
+    for num_key in [1 * 1000 * 1000]:
+        for dist in where_dists:
             for type in types:
                 for rel_type in rel_types:
                     where_args.append(
                         (num_row, num_key, num_row, num_key, dist[0], dist[1],
                          type, rel_type, num_pred_val, num_samples))
-
-where_preset_args = []
+'''
+'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
-        for dist in cen_dists:
+        for dist in where_dists:
             for p in prob:
                 for rel_type in rel_types:
                     where_preset_args.append(
                         (num_row, num_key, dist[0], dist[1], p[0], p[1],
                          rel_type, num_samples))
+'''
 results = []
 
 for arg in args:
