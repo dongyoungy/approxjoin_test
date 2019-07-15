@@ -9,6 +9,7 @@ import MemDB
 import impala.dbapi as impaladb
 import numpy as np
 import pandas as pd
+import threading
 
 hdfs_dir = '/tmp/approxjoin'
 data_path = '/home/dyoon/work/approxjoin_data/'
@@ -23,6 +24,87 @@ e1 = 0.01
 e2 = 0.01
 
 
+def test1(num_rows, num_keys, leftDist, rightDist, type):
+    T1_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}_{4}.csv".format(
+        num_rows, num_keys, leftDist, type, 1)
+    T2_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
+        num_rows, num_keys, rightDist, 2)
+
+    # read table files
+    T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
+    T1 = T1_df.values
+    T1 = T1.astype(int)
+    T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
+    T2 = T2_df.values
+    T2 = T2.astype(int)
+
+    a_v = np.zeros((num_keys, 3))
+    b_v = np.zeros((num_keys, 3))
+    mu_v = np.zeros((num_keys, 3))
+    var_v = np.zeros((num_keys, 2))
+
+    all_keys = np.arange(1, num_keys + 1)
+    a_v[:, 0] = all_keys
+    b_v[:, 0] = all_keys
+    mu_v[:, 0] = all_keys
+    var_v[:, 0] = all_keys
+
+    # get group count for T1
+    counts = np.array(np.unique(T1[:, 0], return_counts=True)).T
+    a_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
+    a_v[:, 2] = a_v[:, 1]**2
+
+    # get group count for T2
+    counts = np.array(np.unique(T2[:, 0], return_counts=True)).T
+    b_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
+    b_v[:, 2] = b_v[:, 1]**2
+
+    # get mean and var
+    gr = T1_df.groupby(0)
+    keys = np.array(list(gr.groups.keys()))
+    means = np.array(gr[1].mean().values)
+    vars = np.array(np.nan_to_num(gr[1].var().values))
+
+    mu_v[keys - 1, 1] = means
+    mu_v[:, 2] = mu_v[:, 1]**2
+    var_v[keys - 1, 1] = vars
+
+    num_pred_val = 10
+
+    a_v2 = np.zeros((num_keys, num_pred_val, 2))
+    mu_v2 = np.zeros((num_keys, num_pred_val, 2))
+    var_v2 = np.zeros((num_keys, num_pred_val, 1))
+
+    # get mean and var
+    gr = T1_df.groupby([0, 2])
+    keys = np.array(list(gr.groups.keys()))
+    counts = np.array(gr.count().values)
+    means = np.array(gr[1].mean().values)
+    vars = np.array(np.nan_to_num(gr[1].var().values))
+
+    a_v2[keys[:, 0].astype(int) - 1, keys[:, 1].astype(int), 0] = counts[:, 0]
+    a_v2[:, :, 1] = a_v2[:, :, 0]**2
+
+    mu_v2[keys[:, 0].astype(int) - 1, keys[:, 1].astype(int), 0] = means
+    mu_v2[:, :, 1] = mu_v2[:, :, 0]**2
+
+    var_v2[keys[:, 0].astype(int) - 1, keys[:, 1].astype(int), 0] = vars
+
+    sum1 = sum(a_v[:, 2] * b_v[:, 2] - a_v[:, 2] * b_v[:, 1] -
+               a_v[:, 1] * b_v[:, 2] + a_v[:, 1] * b_v[:, 1])
+    sum2 = sum(a_v[:, 1] * b_v[:, 1])
+    val1 = math.sqrt(e1 * e2 * sum1 / sum2)
+
+    for i in range(0, num_pred_val):
+        a_temp = a_v2[:, i, :]
+        sum1 += sum(a_temp[:, 1] * b_v[:, 2] - a_temp[:, 1] * b_v[:, 1] -
+                    a_temp[:, 0] * b_v[:, 2] + a_temp[:, 0] * b_v[:, 1])
+        sum2 += sum(a_temp[:, 0] * b_v[:, 1])
+    val2 = math.sqrt(e1 * e2 * sum1 / sum2)
+
+    return (val1, val2)
+
+
 def reset_schema():
     conn = impaladb.connect(impala_host, impala_port)
     cur = conn.cursor()
@@ -30,9 +112,221 @@ def reset_schema():
     cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(sample_schema))
 
 
+def estimate_with_sketch(num_rows, num_keys, leftDist, rightDist):
+    np.random.seed(int(time.time()))
+
+    T1_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
+        num_rows, num_keys, leftDist, 1)
+    T2_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}.csv".format(
+        num_rows, num_keys, rightDist, 2)
+
+    # read table files
+    T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
+    T1 = T1_df.values
+    T1 = T1.astype(int)
+    T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
+    T2 = T2_df.values
+    T2 = T2.astype(int)
+
+    a_v = np.zeros((num_keys, 3))
+    b_v = np.zeros((num_keys, 3))
+    mu_v = np.zeros((num_keys, 3))
+    var_v = np.zeros((num_keys, 2))
+
+    all_keys = np.arange(1, num_keys + 1)
+    a_v[:, 0] = all_keys
+    b_v[:, 0] = all_keys
+    mu_v[:, 0] = all_keys
+    var_v[:, 0] = all_keys
+
+    # get group count for T1
+    counts = np.array(np.unique(T1[:, 0], return_counts=True)).T
+    a_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
+    a_v[:, 2] = a_v[:, 1]**2
+
+    # get group count for T2
+    counts = np.array(np.unique(T2[:, 0], return_counts=True)).T
+    b_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
+    b_v[:, 2] = b_v[:, 1]**2
+
+    # get mean and var
+    gr = T1_df.groupby(0)
+    keys = np.array(list(gr.groups.keys()))
+    means = np.array(gr[1].mean().values)
+    vars = np.array(np.nan_to_num(gr[1].var().values))
+
+    mu_v[keys - 1, 1] = means
+    mu_v[:, 2] = mu_v[:, 1]**2
+    var_v[keys - 1, 1] = vars
+
+    # estimate using sketch
+    num_sketch = 10
+    v1 = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,1])
+    v2 = 0  # sum(a_v[:,1] * (mu_v[:,2] + var_v[:,1]) * b_v[:,1])
+    v3 = 0  # sum(a_v[:,2] * mu_v[:,2] * b_v[:,2])
+    v4 = 0  # sum(a_v[:,2] * mu_v[:,2] * b_v[:,1])
+    v5 = 0  # sum(a_v[:,1] * (mu_v[:,2] + var_v[:,1]) * b_v[:,2])
+    v6 = 0  # sum(a_v[:,1] * b_v[:,1]))
+    v7 = 0  # sum(a_v[:,2] * mu_v[:,1] * b_v[:,2])
+    v8 = 0  # sum(a_v[:,2] * mu_v[:,1] * b_v[:,1])
+    v9 = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,2])
+    v10 = 0  # sum(a_v[:,2] * b_v[:,2]))
+    v11 = 0  # sum(a_v[:,2] * b_v[:,1]))
+    v12 = 0  # sum(a_v[:,1] * b_v[:,2]))
+    for i in range(0, num_sketch):
+        print("current_sketch = {}".format(i))
+        x = np.random.randint(0, 2, size=num_keys)
+        x[x == 0] = -1
+        v1_1 = sum(a_v[:, 1] * mu_v[:, 1] * x[:])
+        v1_2 = sum(b_v[:, 1] * x[:])
+        v1 = v1 + (v1_1 * v1_2)
+        v2_1 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * x[:])
+        v2_2 = v1_2
+        v2 = v2 + (v2_1 * v1_2)
+        v3_1 = sum(a_v[:, 2] * mu_v[:, 2] * x[:])
+        v3_2 = sum(b_v[:, 2] * x[:])
+        v3 = v3 + (v3_1 * v3_2)
+        v4_1 = v3_1
+        v4_2 = v1_2
+        v4 = v4 + (v4_1 * v4_2)
+        v5_1 = v2_1
+        v5_2 = v3_2
+        v5 = v5 + (v5_1 * v5_2)
+        v6_1 = sum(a_v[:, 1] * x[:])
+        v6_2 = v1_2
+        v6 = v6 + (v6_1 * v6_2)
+        v7_1 = sum(a_v[:, 2] * mu_v[:, 1] * x[:])
+        v7_2 = v3_2
+        v7 = v7 + (v7_1 * v7_2)
+        v8_1 = v7_1
+        v8_2 = v1_2
+        v8 = v8 + (v8_1 * v8_2)
+        v9_1 = v1_1
+        v9_2 = v3_2
+        v9 = v9 + (v9_1 * v9_2)
+        v10_1 = sum(a_v[:, 2] * x[:])
+        v10_2 = v3_2
+        v10 = v10 + (v10_1 * v10_2)
+        v11_1 = v10_1
+        v11_2 = v1_2
+        v11 = v11 + (v11_1 * v11_2)
+        v12_1 = v6_1
+        v12_2 = v3_2
+        v12 = v12 + (v12_1 * v12_2)
+
+    v1 = v1 / num_sketch
+    v2 = v2 / num_sketch
+    v3 = v3 / num_sketch
+    v4 = v4 / num_sketch
+    v5 = v5 / num_sketch
+    v6 = v6 / num_sketch
+    v7 = v7 / num_sketch
+    v8 = v8 / num_sketch
+    v9 = v9 / num_sketch
+    v10 = v10 / num_sketch
+    v11 = v11 / num_sketch
+    v12 = v12 / num_sketch
+
+    e1 = 0.01
+    e2 = 0.01
+
+    A_denom = v1**2
+    A1 = v2 / A_denom
+    A2 = v3 / A_denom
+    A3 = v4 / A_denom
+    A4 = v5 / A_denom
+    A = A1 + A2 - A3 - A4
+
+    B_denom = v6 * v1
+    B1 = 1 / v6
+    B2 = v7 / B_denom
+    B3 = v8 / B_denom
+    B4 = v9 / B_denom
+    B = B1 + B2 - B3 - B4
+
+    C_denom = v6**2
+    C1 = v6 / C_denom
+    C2 = v10 / C_denom
+    C3 = v11 / C_denom
+    C4 = v12 / C_denom
+    C = C1 + C2 - C3 - C4
+
+    D = (1 / e1 * e2) * (A1 - (2 * B1) + C1)
+
+    val1_estimate = A - (2 * B) + C
+    val2_estimate = D
+
+    if val1_estimate <= 0 and val2_estimate > 0:
+        p_estimate = max(e1, e2)
+    elif val1_estimate > 0 and val2_estimate <= 0:
+        p_estimate = 1
+    elif val1_estimate > 0 and val2_estimate > 0:
+        val_estimate = (A - (2 * B) + C) / D
+        if val_estimate > 0:
+            val_estimate = math.sqrt(val_estimate)
+        p_estimate = min([1, max([e1, e2, val_estimate])])
+    else:
+        p_minus = max(e1, e2)
+        p_plus = 1
+        pval1 = (1 / p_minus) * val1_estimate + p_minus * val2_estimate
+        pval2 = (1 / p_plus) * val1_estimate + p_plus * val2_estimate
+        if pval1 < pval2:
+            p_estimate = p_minus
+        else:
+            p_estimate = p_plus
+
+    A_denom = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2
+    A1 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * b_v[:, 1]) / A_denom
+    A2 = sum(a_v[:, 2] * mu_v[:, 2] * b_v[:, 2]) / A_denom
+    A3 = sum(a_v[:, 2] * mu_v[:, 2] * b_v[:, 1]) / A_denom
+    A4 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * b_v[:, 2]) / A_denom
+    A = A1 + A2 - A3 - A4
+
+    B_denom = sum(a_v[:, 1] * b_v[:, 1]) * sum(
+        a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
+    B1 = 1 / sum(a_v[:, 1] * b_v[:, 1])
+    B2 = sum(a_v[:, 2] * mu_v[:, 1] * b_v[:, 2]) / B_denom
+    B3 = sum(a_v[:, 2] * mu_v[:, 1] * b_v[:, 1]) / B_denom
+    B4 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 2]) / B_denom
+    B = B1 + B2 - B3 - B4
+
+    C_denom = sum(a_v[:, 1] * b_v[:, 1])**2
+    C1 = sum(a_v[:, 1] * b_v[:, 1]) / C_denom
+    C2 = sum(a_v[:, 2] * b_v[:, 2]) / C_denom
+    C3 = sum(a_v[:, 2] * b_v[:, 1]) / C_denom
+    C4 = sum(a_v[:, 1] * b_v[:, 2]) / C_denom
+    C = C1 + C2 - C3 - C4
+
+    D = (1 / e1 * e2) * (A1 - (2 * B1) + C1)
+
+    val1 = A - (2 * B) + C
+    val2 = D
+
+    if val1 <= 0 and val2 > 0:
+        p = max(e1, e2)
+    elif val1 > 0 and val2 <= 0:
+        p = 1
+    elif val1 > 0 and val2 > 0:
+        val = (A - (2 * B) + C) / D
+        if val > 0:
+            val = math.sqrt(val)
+        p = min([1, max([e1, e2, val])])
+    else:
+        p_minus = max(e1, e2)
+        p_plus = 1
+        pval1 = (1 / p_minus) * val1 + p_minus * val2
+        pval2 = (1 / p_plus) * val1 + p_plus * val2
+        if pval1 < pval2:
+            p = p_minus
+        else:
+            p = p_plus
+
+    return (val1, val2, val1_estimate, val2_estimate, p, p_estimate)
+
+
 def create_preset_sample_pair_with_cond(num_rows, num_keys, leftDist,
                                         rightDist, p, q, rel_type, num_sample):
-    np.random.seed(int(time.time()))
+    np.random.seed(int(time.time() + threading.get_ident()) % (2**32))
     sample_dir = data_path + 'preset_samples/with_cond'
     pathlib.Path(sample_dir).mkdir(parents=True, exist_ok=True)
 
@@ -52,6 +346,9 @@ def create_preset_sample_pair_with_cond(num_rows, num_keys, leftDist,
     #  T2_df = T2_df.drop(columns=[3])
     T2 = T2_df.values
     T2 = T2.astype(int)
+
+    e1 = 0.01
+    e2 = 0.01
 
     q1 = e1 / p
     q2 = e2 / p
@@ -83,7 +380,7 @@ def create_preset_sample_pair_with_cond(num_rows, num_keys, leftDist,
             continue
 
         # generate random key permutation
-        key_perm = np.random.permutation(num_keys) + 1
+        key_perm = np.random.permutation(num_keys * 10) + 1
         hash_col_idx = 3
 
         T1_perm = key_perm[T1[:, 0] - 1]
@@ -92,8 +389,8 @@ def create_preset_sample_pair_with_cond(num_rows, num_keys, leftDist,
         T1_new[:, hash_col_idx] = T1_perm
         T2_new[:, hash_col_idx] = T2_perm
 
-        S1 = T1_new[np.where(T1_new[:, hash_col_idx] % 100000 <= (p * 100000))]
-        S2 = T2_new[np.where(T2_new[:, hash_col_idx] % 100000 <= (p * 100000))]
+        S1 = T1_new[np.where(T1_new[:, hash_col_idx] % (num_keys+1) <= (p * num_keys))]
+        S2 = T2_new[np.where(T2_new[:, hash_col_idx] % (num_keys+1) <= (p * num_keys))]
 
         S1_rows = np.size(S1, 0)
         S2_rows = np.size(S2, 0)
@@ -152,8 +449,8 @@ def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
     #  T2_df = T2_df.drop(columns=[3])
     T2 = T2_df.values
 
-    q1 = e1 / p
-    q2 = e2 / p
+    q1 = q
+    q2 = q
 
     print("creating samples for p = {:.3f}, q = {:.3f}".format(p, q))
 
@@ -183,7 +480,7 @@ def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
             continue
 
         # generate random key permutation
-        key_perm = np.random.permutation(num_keys) + 1
+        key_perm = np.random.permutation(num_keys * 10) + 1
         hash_col_idx = 3
 
         T1_perm = key_perm[T1[:, 0] - 1]
@@ -260,13 +557,21 @@ def create_sample_pair(T1_rows,
 
     # read table files
     T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
+    T1 = T1_df.values
+    T1 = T1.astype(int)
+    T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
+    T2 = T2_df.values
+    T2 = T2.astype(int)
+
+    # read table files
+    #  T1_df = pd.read_csv(T1_name, sep='|', header=None, usecols=[0, 1, 2])
     # drop dummy col
     #  T1_df = T1_df.drop(columns=[3])
-    T1 = T1_df.values
+    #  T1 = T1_df.values
 
-    T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
+    #  T2_df = pd.read_csv(T2_name, sep='|', header=None, usecols=[0, 1, 2])
     #  T2_df = T2_df.drop(columns=[3])
-    T2 = T2_df.values
+    #  T2 = T2_df.values
 
     a_v = np.zeros((num_keys, 3))
     b_v = np.zeros((num_keys, 3))
@@ -320,41 +625,55 @@ def create_sample_pair(T1_rows,
             A_denom = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2
             A1 = sum(a_v[:, 1] *
                      (mu_v[:, 2] + var_v[:, 1]) * b_v[:, 1]) / A_denom
-            A2 = sum(a_v[:, 2] * mu_v[:, 2] * b_v[:, 1]) / A_denom
-            A3 = sum(a_v[:, 1] *
+            A2 = sum(a_v[:, 2] * mu_v[:, 2] * b_v[:, 2]) / A_denom
+            A3 = sum(a_v[:, 2] * mu_v[:, 2] * b_v[:, 1]) / A_denom
+            A4 = sum(a_v[:, 1] *
                      (mu_v[:, 2] + var_v[:, 1]) * b_v[:, 2]) / A_denom
-            A4 = sum(a_v[:, 2] * mu_v[:, 2] * b_v[:, 2]) / A_denom
-            A = A1 - A2 - A3 + A4
+            A = A1 + A2 - A3 - A4
 
-            B_denom = sum(a_v[:, 1] * b_v[:, 1])**3
-            B1 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) * sum(
-                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / B_denom
-            B2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 2]) * sum(
-                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / B_denom
-            B3 = sum(a_v[:, 2] * mu_v[:, 1] * b_v[:, 1]) * sum(
-                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / B_denom
-            B4 = sum(a_v[:, 2] * mu_v[:, 2] * b_v[:, 1]) * sum(
-                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / B_denom
-            B = B1 - B2 - B3 + B4
+            B_denom = sum(a_v[:, 1] * b_v[:, 1]) * sum(
+                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
+            B1 = 1 / sum(a_v[:, 1] * b_v[:, 1])
+            B2 = sum(a_v[:, 2] * mu_v[:, 1] * b_v[:, 2]) / B_denom
+            B3 = sum(a_v[:, 2] * mu_v[:, 1] * b_v[:, 1]) / B_denom
+            B4 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 2]) / B_denom
+            #  B3 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 2]) * sum(
+            #  a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / B_denom
+            #  B3 = sum(a_v[:, 2] * mu_v[:, 1] * b_v[:, 1]) * sum(
+            #  a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / B_denom
+            #  B4 = sum(a_v[:, 2] * mu_v[:, 2] * b_v[:, 1]) * sum(
+            #  a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / B_denom
+            B = B1 + B2 - B3 - B4
 
-            C_denom = sum(a_v[:, 1] * b_v[:, 1])**4
-            C1 = sum(a_v[:, 1] * b_v[:, 1]) * sum(
-                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2 / C_denom
-            C2 = sum(a_v[:, 2] * b_v[:, 1]) * sum(
-                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2 / C_denom
-            C3 = sum(a_v[:, 1] * b_v[:, 2]) * sum(
-                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2 / C_denom
-            C4 = sum(a_v[:, 2] * b_v[:, 2]) * sum(
-                a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2 / C_denom
-            C = C1 - C2 - C3 + C4
+            C_denom = sum(a_v[:, 1] * b_v[:, 1])**2
+            C1 = sum(a_v[:, 1] * b_v[:, 1]) / C_denom
+            C2 = sum(a_v[:, 2] * b_v[:, 2]) / C_denom
+            C3 = sum(a_v[:, 2] * b_v[:, 1]) / C_denom
+            C4 = sum(a_v[:, 1] * b_v[:, 2]) / C_denom
+            #  C2 = sum(a_v[:, 2] * b_v[:, 1]) * sum(
+            #  a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2 / C_denom
+            #  C3 = sum(a_v[:, 1] * b_v[:, 2]) * sum(
+            #  a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2 / C_denom
+            #  C4 = sum(a_v[:, 2] * b_v[:, 2]) * sum(
+            #  a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])**2 / C_denom
+            C = C1 + C2 - C3 - C4
 
             D = (1 / e1 * e2) * (A1 - (2 * B1) + C1)
 
-            val = (A - (2 * B) + C) / D
-            if val > 0:
-                val = math.sqrt(val)
+            val1 = A - (2 * B) + C
+            val2 = D
 
-            p = min([1, max([e1, e2, val])])
+            if val1 <= 0 and val2 > 0:
+                p = max(e1, e2)
+            elif val1 > 0 and val2 <= 0:
+                p = 1
+            elif val1 > 0 and val2 > 0:
+                val = (A - (2 * B) + C) / D
+                if val > 0:
+                    val = math.sqrt(val)
+                p = min([1, max([e1, e2, val])])
+            else:
+                p = min([1, max([e1, e2, val])])
     else:
         a_star = max(a_v[:, 1])
         if type == 'count':
@@ -447,18 +766,138 @@ def create_sample_pair(T1_rows,
             pval = np.delete(pval, np.argwhere(pval[:, 0] < max([e1, e2])), 0)
             m = np.argmin(pval[:, 1])
             p = pval[m, 0]
+        elif type == 'avg':
+            # get group count for T2
+            counts = np.array(np.unique(T2[:, 0], return_counts=True)).T
+            b_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
+            b_v[:, 2] = b_v[:, 1]**2
+
+            # estimate using sketch
+            num_sketch = 1000
+            v1 = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,1])
+            v2 = 0  # sum(a_v[:,1] * (mu_v[:,2] + var_v[:,1]) * b_v[:,1])
+            v3 = 0  # sum(a_v[:,2] * mu_v[:,2] * b_v[:,2])
+            v4 = 0  # sum(a_v[:,2] * mu_v[:,2] * b_v[:,1])
+            v5 = 0  # sum(a_v[:,1] * (mu_v[:,2] + var_v[:,1]) * b_v[:,2])
+            v6 = 0  # sum(a_v[:,1] * b_v[:,1]))
+            v7 = 0  # sum(a_v[:,2] * mu_v[:,1] * b_v[:,2])
+            v8 = 0  # sum(a_v[:,2] * mu_v[:,1] * b_v[:,1])
+            v9 = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,2])
+            v10 = 0  # sum(a_v[:,2] * b_v[:,2]))
+            v11 = 0  # sum(a_v[:,2] * b_v[:,1]))
+            v12 = 0  # sum(a_v[:,1] * b_v[:,2]))
+            for i in range(0, num_sketch):
+                print("current_sketch = {}".format(i))
+                x = np.random.randint(0, 2, size=num_keys)
+                x[x == 0] = -1
+                v1_1 = sum(a_v[:, 1] * mu_v[:, 1] * x[:])
+                v1_2 = sum(b_v[:, 1] * x[:])
+                v1 = v1 + (v1_1 * v1_2)
+                v2_1 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * x[:])
+                v2_2 = v1_2
+                v2 = v2 + (v2_1 * v1_2)
+                v3_1 = sum(a_v[:, 2] * mu_v[:, 2] * x[:])
+                v3_2 = sum(b_v[:, 2] * x[:])
+                v3 = v3 + (v3_1 * v3_2)
+                v4_1 = v3_1
+                v4_2 = v1_2
+                v4 = v4 + (v4_1 * v4_2)
+                v5_1 = v2_1
+                v5_2 = v3_2
+                v5 = v5 + (v5_1 * v5_2)
+                v6_1 = sum(a_v[:, 1] * x[:])
+                v6_2 = v1_2
+                v6 = v6 + (v6_1 * v6_2)
+                v7_1 = sum(a_v[:, 2] * mu_v[:, 1] * x[:])
+                v7_2 = v3_2
+                v7 = v7 + (v7_1 * v7_2)
+                v8_1 = v7_1
+                v8_2 = v1_2
+                v8 = v8 + (v8_1 * v8_2)
+                v9_1 = v1_1
+                v9_2 = v3_2
+                v9 = v9 + (v9_1 * v9_2)
+                v10_1 = sum(a_v[:, 2] * x[:])
+                v10_2 = v3_2
+                v10 = v10 + (v10_1 * v10_2)
+                v11_1 = v10_1
+                v11_2 = v1_2
+                v11 = v11 + (v11_1 * v11_2)
+                v12_1 = v6_1
+                v12_2 = v3_2
+                v12 = v12 + (v12_1 * v12_2)
+
+            v1 = v1 / num_sketch
+            v2 = v2 / num_sketch
+            v3 = v3 / num_sketch
+            v4 = v4 / num_sketch
+            v5 = v5 / num_sketch
+            v6 = v6 / num_sketch
+            v7 = v7 / num_sketch
+            v8 = v8 / num_sketch
+            v9 = v9 / num_sketch
+            v10 = v10 / num_sketch
+            v11 = v11 / num_sketch
+            v12 = v12 / num_sketch
+
+            A_denom = v1**2
+            A1 = v2 / A_denom
+            A2 = v3 / A_denom
+            A3 = v4 / A_denom
+            A4 = v5 / A_denom
+            A = A1 + A2 - A3 - A4
+
+            B_denom = v6 * v1
+            B1 = 1 / v6
+            B2 = v7 / B_denom
+            B3 = v8 / B_denom
+            B4 = v9 / B_denom
+            B = B1 + B2 - B3 - B4
+
+            C_denom = v6**2
+            C1 = v6 / C_denom
+            C2 = v10 / C_denom
+            C3 = v11 / C_denom
+            C4 = v12 / C_denom
+            C = C1 + C2 - C3 - C4
+
+            D = (1 / e1 * e2) * (A1 - (2 * B1) + C1)
+
+            val1 = A - (2 * B) + C
+            val2 = D
+
+            if val1 <= 0 and val2 > 0:
+                p = max(e1, e2)
+            elif val1 > 0 and val2 <= 0:
+                p = 1
+            elif val1 > 0 and val2 > 0:
+                val = (A - (2 * B) + C) / D
+                if val > 0:
+                    val = math.sqrt(val)
+                p = min([1, max([e1, e2, val])])
+            else:
+                p_minus = max(e1, e2)
+                p_plus = 1
+                pval1 = (1 / p_minus) * val1 + p_minus * val2
+                pval2 = (1 / p_plus) * val1 + p_plus * val2
+                if pval1 < pval2:
+                    p = p_minus
+                else:
+                    p = p_plus
         else:
             print('Unsupported type: {}'.format(type))
             raise ValueError
 
+    if p != 0.01:
+        p = 0.01
     q1 = e1 / p
     q2 = e2 / p
-
-    print("p = {:.3f}".format(p))
 
     dir = "{}/{}n_{}k/{}_{}/{}".format(sample_dir, T1_rows, T1_keys, leftDist,
                                        rightDist, type)
     pathlib.Path(dir).mkdir(parents=True, exist_ok=True)
+
+    print("{}: p = {:.3f}".format(dir, p))
 
     # clear resources
     del a_v, b_v, mu_v, var_v, gr, keys, means, vars
@@ -480,9 +919,9 @@ def create_sample_pair(T1_rows,
 
         S1_name = "{}/s1_{}.npy".format(dir, s)
         S2_name = "{}/s2_{}.npy".format(dir, s)
-        if os.path.exists(S1_name) and os.path.exists(S2_name):
-            #  print("Samples (#{}) already exist".format(s))
-            continue
+        #  if os.path.exists(S1_name) and os.path.exists(S2_name):
+        #  print("Samples (#{}) already exist".format(s))
+        #  continue
 
         # generate random key permutation
         key_perm = np.random.permutation(num_keys) + 1
@@ -1130,13 +1569,15 @@ def create_sample_pair_count_with_cond(
         num_pred_val,
         num_samples,
         isCentralized=True):
-    np.random.seed(int(time.time()))
+    np.random.seed(int(time.time() + threading.get_ident()) % (2**32))
     dir = data_path + 'our_samples/with_cond/'
     d = ''
     if isCentralized:
         d = 'centralized'
     else:
         d = 'decentralized'
+    e1 = 0.01
+    e2 = 0.01
 
     sample_dir = dir + d + '/'
     pathlib.Path(sample_dir).mkdir(parents=True, exist_ok=True)
@@ -1199,8 +1640,8 @@ def create_sample_pair_count_with_cond(
             for i in range(0, num_pred_val):
                 #  a_temp = np.sum(a_v[:, i, :], axis=1)
                 a_temp = a_v[:, i, :]
-                sum1 += sum(a_temp[:, 1] * b_v[:, 2] +
-                            a_temp[:, 1] * b_v[:, 1] +
+                sum1 += sum(a_temp[:, 1] * b_v[:, 2] -
+                            a_temp[:, 1] * b_v[:, 1] -
                             a_temp[:, 0] * b_v[:, 2] +
                             a_temp[:, 0] * b_v[:, 1])
                 sum2 += sum(a_temp[:, 0] * b_v[:, 1])
@@ -1218,8 +1659,8 @@ def create_sample_pair_count_with_cond(
                 #  a_temp = np.sum(a_v[:, i, :], axis=1)
                 a_temp = a_v[:, i, :]
                 c = c_v[i] / c_total
-                sum1 += c * sum(a_temp[:, 1] * b_v[:, 2] + a_temp[:, 1] *
-                                b_v[:, 1] + a_temp[:, 0] * b_v[:, 2] +
+                sum1 += c * sum(a_temp[:, 1] * b_v[:, 2] - a_temp[:, 1] *
+                                b_v[:, 1] - a_temp[:, 0] * b_v[:, 2] +
                                 a_temp[:, 0] * b_v[:, 1])
                 sum2 += c * sum(a_temp[:, 0] * b_v[:, 1])
             val = math.sqrt(e1 * e2 * sum1 / sum2)
@@ -1267,7 +1708,7 @@ def create_sample_pair_count_with_cond(
             continue
 
         # generate random key permutation
-        key_perm = np.random.permutation(num_keys) + 1
+        key_perm = np.random.permutation(num_keys * 10) + 1
         hash_col_idx = 3
 
         T1_perm = key_perm[T1[:, 0].astype(int) - 1]
@@ -1281,8 +1722,10 @@ def create_sample_pair_count_with_cond(
         T1_new[:, hash_col_idx] = T1_perm
         T2_new[:, hash_col_idx] = T2_perm
 
-        S1 = T1_new[np.where(T1_new[:, hash_col_idx] % 100000 <= (p * 100000))]
-        S2 = T2_new[np.where(T2_new[:, hash_col_idx] % 100000 <= (p * 100000))]
+        S1 = T1_new[np.where(T1_new[:, hash_col_idx] %
+                             (num_keys + 1) <= (p * num_keys))]
+        S2 = T2_new[np.where(T2_new[:, hash_col_idx] %
+                             (num_keys + 1) <= (p * num_keys))]
 
         S1_rows = np.size(S1, 0)
         S2_rows = np.size(S2, 0)
