@@ -16,7 +16,7 @@ data_path = '/home/dyoon/work/approxjoin_data/'
 raw_data_path = '/home/dyoon/work/approxjoin_data/raw_data'
 text_schema = 'approxjoin_text'
 parquet_schema = 'approxjoin_parquet'
-sample_schema = 'approxjoin_parquet_sample'
+#  sample_schema = 'approxjoin_parquet_sample'
 impala_host = 'cp-2'
 impala_port = 21050
 fetch_size = 1000 * 1000
@@ -105,7 +105,7 @@ def test1(num_rows, num_keys, leftDist, rightDist, type):
     return (val1, val2)
 
 
-def reset_schema():
+def reset_schema(sample_schema):
     conn = impaladb.connect(impala_host, impala_port)
     cur = conn.cursor()
     cur.execute("DROP SCHEMA IF EXISTS {0} CASCADE".format(sample_schema))
@@ -389,8 +389,10 @@ def create_preset_sample_pair_with_cond(num_rows, num_keys, leftDist,
         T1_new[:, hash_col_idx] = T1_perm
         T2_new[:, hash_col_idx] = T2_perm
 
-        S1 = T1_new[np.where(T1_new[:, hash_col_idx] % (num_keys+1) <= (p * num_keys))]
-        S2 = T2_new[np.where(T2_new[:, hash_col_idx] % (num_keys+1) <= (p * num_keys))]
+        S1 = T1_new[np.where(T1_new[:, hash_col_idx] %
+                             (num_keys + 1) <= (p * num_keys))]
+        S2 = T2_new[np.where(T2_new[:, hash_col_idx] %
+                             (num_keys + 1) <= (p * num_keys))]
 
         S1_rows = np.size(S1, 0)
         S2_rows = np.size(S2, 0)
@@ -979,16 +981,66 @@ def create_sample_pair(T1_rows,
     return True
 
 
-def create_sample_pair_from_database(T1_schema,
-                                     T1_table,
-                                     T1_join_col,
-                                     T1_agg_col,
-                                     T2_schema,
-                                     T2_table,
-                                     T2_join_col,
-                                     T1_where,
-                                     type,
-                                     is_centralized=True):
+def create_preset_sample_pair_from_impala(host,
+                                          port,
+                                          T1_schema,
+                                          T1_table,
+                                          T1_join_col,
+                                          T2_schema,
+                                          T2_table,
+                                          T2_join_col,
+                                          target_schema,
+                                          p,
+                                          q,
+                                          num_sample,
+                                          overwrite=False):
+    np.random.seed(int(time.time()))
+    conn = impaladb.connect(host, port)
+    cur = conn.cursor()
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(target_schema))
+    hash_num = np.random.randint(1000 * 1000 * 1000)
+
+    for i in range(1, num_sample + 1):
+        S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(T1_table, p, q, i, 1)
+        S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(T2_table, p, q, i, 2)
+        S1_name = S1_name.replace('.', '_')
+        S2_name = S2_name.replace('.', '_')
+
+        if overwrite:
+            cur.execute("DROP TABLE IF EXISTS {}".format(S1_name))
+            cur.execute("DROP TABLE IF EXISTS {}".format(S2_name))
+
+        create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        FROM {2}.{3} 
+        ) tmp
+        WHERE pval <= {4} * 1000000 and qval <= {5}
+        """.format(target_schema, S1_name, T1_schema, T1_table, p, q,
+                   hash_num + i, T1_join_col)
+
+        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * 1000000 and qval <= {5}
+        """.format(target_schema, S2_name, T2_schema, T2_table, p, q,
+                   hash_num + i, T2_join_col)
+
+        cur.execute(create_S1_sql)
+        cur.execute(create_S2_sql)
+
+
+def create_our_sample_pair_from_impala(T1_schema,
+                                       T1_table,
+                                       T1_join_col,
+                                       T1_agg_col,
+                                       T2_schema,
+                                       T2_table,
+                                       T2_join_col,
+                                       T1_where,
+                                       sample_schema,
+                                       agg_type,
+                                       is_centralized=True):
     np.random.seed(int(time.time()))
     d = ''
     if is_centralized:
@@ -1270,7 +1322,7 @@ def create_sample_pair_from_database(T1_schema,
     ts = int(time.time())
 
     create_S1_sql = """CREATE TABLE {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-    SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 100000) as pval
+    SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
     FROM {2}.{3} {8}
     ) tmp
     WHERE pval <= {4} * 100000 and qval <= {5}
@@ -1278,7 +1330,7 @@ def create_sample_pair_from_database(T1_schema,
                T1_join_col, T1_where)
 
     create_S2_sql = """CREATE TABLE {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-    SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 100000) as pval
+    SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
     FROM {2}.{3}
     ) tmp
     WHERE pval <= {4} * 100000 and qval <= {5}
