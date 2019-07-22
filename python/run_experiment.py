@@ -84,7 +84,7 @@ is_centralized_list = [True]
 
 cen_num_samples = 500
 dec_num_samples = 300
-dec_avg_num_samples = 500
+dec_avg_num_samples = 1000
 
 cen_results = []
 dec_results = []
@@ -178,6 +178,7 @@ temp_dists.append(('uniform', 'uniform'))
 
 where_num_samples = 1000
 # centralized setting with cond (WHERE)
+'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in temp_dists:
@@ -190,8 +191,10 @@ for num_row in [10 * 1000 * 1000]:
                             cond_args.append(
                                 (num_row, num_key, dist[0], dist[1], var_dist,
                                  rel_type, s, cond, True))
+'''
 
 # centralized setting with cond (WHERE, preset)
+'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         #  for dist in cen_dists:
@@ -205,28 +208,24 @@ for num_row in [10 * 1000 * 1000]:
                                 cond_preset_args.append(
                                     (num_row, num_key, dist[0], dist[1], p[0],
                                      p[1], rel_type, s, cond))
+'''
 
 # decentralized setting for avg
-'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in dec_dists:
             for s in range(1, dec_avg_num_samples + 1):
-                dec_avg_args.append(
-                    (num_row, num_key, dist[0], dist[1],  s))
-'''
+                dec_avg_args.append((num_row, num_key, dist[0], dist[1], s))
 
 # decentralized setting for avg (preset)
-'''
 for num_row in [10 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in dec_dists:
             agg = 'avg'
-            for p in new_prob:
+            for p in prob:
                 for s in range(1, dec_avg_num_samples + 1):
                     dec_preset_avg_args.append((num_row, num_key, dist[0],
-                                            dist[1], agg, p[0], p[1], s))
-'''
+                                                dist[1], agg, p[0], p[1], s))
 
 nkey_in_M = 1
 

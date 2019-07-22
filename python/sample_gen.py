@@ -5,6 +5,7 @@ import time
 import pathlib
 import datetime
 import MemDB
+import hashlib
 
 import impala.dbapi as impaladb
 import numpy as np
@@ -432,7 +433,7 @@ def create_preset_sample_pair_with_cond(num_rows, num_keys, leftDist,
 
 def create_preset_sample_pair(num_rows, num_keys, leftDist, rightDist, p, q,
                               num_sample):
-    np.random.seed(int(time.time()))
+    np.random.seed(int(time.time() + threading.get_ident()) % (2**32))
     sample_dir = data_path + 'preset_samples'
     pathlib.Path(sample_dir).mkdir(parents=True, exist_ok=True)
 
@@ -539,7 +540,10 @@ def create_sample_pair(T1_rows,
                        type,
                        num_samples,
                        isCentralized=True):
-    np.random.seed(int(time.time()))
+    # seed the rng
+    hash_val = int(hashlib.sha1(type.encode()).hexdigest(), 16) % (10**8)
+    np.random.seed(
+        (int(time.time()) + hash_val + threading.get_ident()) % (2**32))
     dir = data_path + 'our_samples/'
     d = ''
     if isCentralized:
@@ -665,6 +669,18 @@ def create_sample_pair(T1_rows,
             val1 = A - (2 * B) + C
             val2 = D
 
+            # old implementation
+            #  if val1 <= 0 and val2 > 0:
+            #  p = max(e1, e2)
+            #  elif val1 > 0 and val2 <= 0:
+            #  p = 1
+            #  elif val1 > 0 and val2 > 0:
+            #  val = (A - (2 * B) + C) / D
+            #  if val > 0:
+            #  val = math.sqrt(val)
+            #  p = min([1, max([e1, e2, val])])
+            #  else:
+            #  p = min([1, max([e1, e2, val])])
             if val1 <= 0 and val2 > 0:
                 p = max(e1, e2)
             elif val1 > 0 and val2 <= 0:
@@ -675,7 +691,14 @@ def create_sample_pair(T1_rows,
                     val = math.sqrt(val)
                 p = min([1, max([e1, e2, val])])
             else:
-                p = min([1, max([e1, e2, val])])
+                p_minus = max(e1, e2)
+                p_plus = 1
+                pval1 = (1 / p_minus) * val1 + p_minus * val2
+                pval2 = (1 / p_plus) * val1 + p_plus * val2
+                if pval1 < pval2:
+                    p = p_minus
+                else:
+                    p = p_plus
     else:
         a_star = max(a_v[:, 1])
         if type == 'count':

@@ -43,7 +43,7 @@ def callback_success(result):
 #  t = timeit.timeit(stmt=s, setup=setup, number=1)
 #  print("[{0}, {1}, {2}] = {3} s".format(dist, type, d, t))
 
-num_proc = 10
+num_proc = 4
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 #  for k in [1000 * 1000, 10 * 1000 * 1000]:
@@ -75,34 +75,32 @@ where_dists.append(('uniform', 'uniform'))
 aggs = ['count', 'sum', 'avg']
 is_centralized_list = [True]
 
-num_samples = 1000
+num_samples = 100
 
 args = []
-'''
-for num_row in [10 * 1000 * 1000]:
+for num_row in [100 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in cen_dists:
             for agg in aggs:
                 for is_centralized in is_centralized_list:
                     args.append((num_row, num_key, num_row, num_key, dist[0],
                                  dist[1], agg, num_samples, is_centralized))
-'''
 
 # for decentralized setting
 dists = []
 for leftDist in ['uniform', 'normal', 'powerlaw']:
     #  for rightDist in [
-#  'uniform', 'normal', 'normal1', 'normal2', 'powerlaw', 'powerlaw1',
-#  'powerlaw2'
-#  ]:
+    #  'uniform', 'normal', 'normal1', 'normal2', 'powerlaw', 'powerlaw1',
+    #  'powerlaw2'
+    #  ]:
     for rightDist in ['uniform', 'normal', 'powerlaw']:
         dists.append((leftDist, rightDist))
 dists.append(('uniform', 'uniform_max_var'))
 dists.append(('normal', 'normal_max_var'))
 dists.append(('powerlaw', 'powerlaw_max_var'))
-aggs = ['count', 'sum']
-dec_aggs = ['avg']
-for num_row in [10 * 1000 * 1000]:
+#  aggs = ['count', 'sum']
+dec_aggs = ['count', 'sum', 'avg']
+for num_row in [100 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in dists:
             for agg in dec_aggs:
@@ -127,14 +125,12 @@ prob.append((1, 0.01))
 #  prob.append((1, 0.02))
 
 # for preset(baseline))
-'''
-for num_row in [10 * 1000 * 1000]:
+for num_row in [100 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in dists:
             for p in prob:
-                preset_args.append(
-                    (num_row, num_key, dist[0], dist[1], p[0], p[1], 500))
-'''
+                preset_args.append((num_row, num_key, dist[0], dist[1], p[0],
+                                    p[1], num_samples))
 
 where_args = []
 where_preset_args = []
@@ -144,8 +140,7 @@ rel_types = ['uniform', 'normal', 'powerlaw']
 types = ['uniform', 'identical']
 #  types = ['uniform']
 num_pred_val = 10
-'''
-for num_row in [10 * 1000 * 1000]:
+for num_row in [100 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in where_dists:
             for type in types:
@@ -153,9 +148,7 @@ for num_row in [10 * 1000 * 1000]:
                     where_args.append(
                         (num_row, num_key, num_row, num_key, dist[0], dist[1],
                          type, rel_type, num_pred_val, num_samples))
-'''
-'''
-for num_row in [10 * 1000 * 1000]:
+for num_row in [100 * 1000 * 1000]:
     for num_key in [1 * 1000 * 1000]:
         for dist in where_dists:
             for p in prob:
@@ -163,7 +156,6 @@ for num_row in [10 * 1000 * 1000]:
                     where_preset_args.append(
                         (num_row, num_key, dist[0], dist[1], p[0], p[1],
                          rel_type, num_samples))
-'''
 results = []
 
 for arg in args:

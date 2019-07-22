@@ -6,6 +6,7 @@ import string
 import subprocess
 import threading
 import time
+import hashlib
 
 import impala.dbapi as impaladb
 import numpy as np
@@ -85,9 +86,10 @@ def create_max_var_table_data(num_rows,
                               type,
                               with_dummy=False,
                               overwrite=False):
-
     # seed the rng
-    np.random.seed(int(time.time()))
+    hash_val = int(hashlib.sha1(
+        (type + '_max_var').encode()).hexdigest(), 16) % (10**8)
+    np.random.seed(int(time.time()) + hash_val)
     T1_table_name = "t_{0}n_{1}k_{2}_{3}".format(num_rows, num_keys, type, 1)
     T2_table_name = "t_{0}n_{1}k_{2}_max_var_{3}".format(
         num_rows, num_keys, type, 2)
@@ -118,6 +120,7 @@ def create_max_var_table_data(num_rows,
     a_v[counts[:, 0].astype(int) - 1, 1] = counts[:, 1]
 
     max_key = np.argmax(a_v[:, 1]) + 1
+    val1_map = np.random.permutation(1000) + 1
 
     print("max_key = {}".format(max_key))
 
@@ -158,13 +161,22 @@ def create_max_var_table_data(num_rows,
         keys[max_idx - 1] = max_key
 
         # generate data for two value columns
-        val1 = np.random.normal(100, 25, current_batch_size).astype(int)
+        #  val1 = np.random.normal(100, 25, current_batch_size).astype(int)
+        alpha = -1.5
+        minv = 1
+        maxv = 1000
+        rand_keys = np.array(np.random.random(size=current_batch_size))
+        val1 = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+                minv**(alpha + 1))**(1 / (alpha + 1))
+        val1 = [math.floor(k) for k in val1]
         val2 = np.random.randint(1, 100, current_batch_size)
 
         keys = np.array(keys)
         val1 = np.array(val1)
         val2 = np.array(val2)
         val3 = np.array(val3)
+
+        val1 = val1_map[val1 - 1]
 
         keys.shape = (current_batch_size, 1)
         val1.shape = (current_batch_size, 1)
@@ -201,6 +213,10 @@ def create_table_data(num_rows,
     if not os.path.exists(raw_data_path):
         os.makedirs(raw_data_path)
 
+    # seed the rng
+    hash_val = int(hashlib.sha1(type.encode()).hexdigest(), 16) % (10**8)
+    np.random.seed(int(time.time()) + hash_val + n)
+
     table_name = "t_{0}n_{1}k_{2}_{3}".format(num_rows, num_keys, type, n)
     data_file = raw_data_path + '/' + "{0}.csv".format(table_name)
 
@@ -213,8 +229,6 @@ def create_table_data(num_rows,
     dummy_col_size = 200
     # write 500k records at a time
     default_batch_size = 500000
-    # seed the rng
-    np.random.seed(int(time.time()))
 
     # open file
     f = open(data_file, "w")
@@ -225,14 +239,15 @@ def create_table_data(num_rows,
     current_batch_size = default_batch_size
 
     # set random string for dummy column
-    val3 = [
-        ''.join(
-            random.choice(string.ascii_uppercase + string.digits)
-            for _ in range(dummy_col_size))
-    ] * current_batch_size
+    #  val3 = [
+    #  ''.join(
+    #  random.choice(string.ascii_uppercase + string.digits)
+    #  for _ in range(dummy_col_size))
+    #  ] * current_batch_size
 
     # set random permutation of keys
     keymap = np.random.permutation(num_keys) + 1
+    val1_map = np.random.permutation(1000) + 1
 
     while remaining > 0:
 
@@ -278,7 +293,7 @@ def create_table_data(num_rows,
             keys = keys.round().astype(int)
 
         elif type == 'powerlaw':
-            alpha = -2.5
+            alpha = -1.5
             minv = 1
             maxv = num_keys
             rand_keys = np.array(np.random.random(size=current_batch_size))
@@ -309,25 +324,33 @@ def create_table_data(num_rows,
             return
 
         # generate data for two value columns
-        val1 = np.random.normal(100, 25, current_batch_size).astype(int)
+        #  val1 = np.random.normal(100, 25, current_batch_size).astype(int)
+        alpha = -1.5
+        minv = 1
+        maxv = 1000
+        rand_keys = np.array(np.random.random(size=current_batch_size))
+        val1 = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+                minv**(alpha + 1))**(1 / (alpha + 1))
+        val1 = [math.floor(k) for k in val1]
         val2 = np.random.randint(1, 100, current_batch_size)
 
         keys = np.array(keys)
         val1 = np.array(val1)
         val2 = np.array(val2)
-        val3 = np.array(val3)
+        #  val3 = np.array(val3)
 
+        val1 = val1_map[val1 - 1]
         keys = keymap[keys - 1]
 
         keys.shape = (current_batch_size, 1)
         val1.shape = (current_batch_size, 1)
         val2.shape = (current_batch_size, 1)
-        val3.shape = (current_batch_size, 1)
+        #  val3.shape = (current_batch_size, 1)
 
-        if with_dummy:
-            rows = np.hstack((keys, val1, val2, val3))
-        else:
-            rows = np.hstack((keys, val1, val2))
+        #  if with_dummy:
+        #  rows = np.hstack((keys, val1,== val2, val3))
+        #  else:
+        rows = np.hstack((keys, val1, val2))
 
         if write_thread is not None:
             write_thread.join()
@@ -374,6 +397,11 @@ def create_table_data_for_where(
     if not os.path.exists(raw_data_path):
         os.makedirs(raw_data_path)
 
+    # seed the rng
+    hash_val = int(
+        hashlib.sha1((type + '_for_where').encode()).hexdigest(), 16) % (10**8)
+    np.random.seed(int(time.time()) + hash_val + n)
+
     table_name = "t_{0}n_{1}k_{2}_{3}_{4}".format(num_rows, num_keys, type,
                                                   rel_type, n)
     data_file = raw_data_path + '/' + "{0}.csv".format(table_name)
@@ -387,8 +415,6 @@ def create_table_data_for_where(
     dummy_col_size = 200
     # write 500k records at a time
     default_batch_size = 500000
-    # seed the rng
-    np.random.seed(int(time.time()))
 
     # open file
     f = open(data_file, "w")
@@ -407,6 +433,7 @@ def create_table_data_for_where(
 
     # set random permutation of keys
     keymap = np.random.permutation(num_keys) + 1
+    val1_map = np.random.permutation(1000) + 1
 
     while remaining > 0:
 
@@ -452,7 +479,7 @@ def create_table_data_for_where(
             keys = keys.round().astype(int)
 
         elif type == 'powerlaw':
-            alpha = -2.5
+            alpha = -1.5
             minv = 1
             maxv = num_keys
             rand_keys = np.array(np.random.random(size=current_batch_size))
@@ -494,7 +521,7 @@ def create_table_data_for_where(
             r = num_pred_val / 2
             scale = num_pred_val / 10
             val2 = ss.truncnorm(a=-r / scale, b=r / scale,
-            scale=scale).rvs(current_batch_size)
+                                scale=scale).rvs(current_batch_size)
             val2 = val2 + r
             val2 = val2.round().astype(int)
         elif rel_type == 'powerlaw':
