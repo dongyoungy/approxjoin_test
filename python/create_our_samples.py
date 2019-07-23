@@ -28,10 +28,12 @@ def callback_success(result):
 num_proc = 16
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
-num_instacart_samples = 1
-num_movielens_samples = 1
-num_tpch100g_samples = 1
+num_instacart_samples = 1000
+num_movielens_samples = 1000
+num_tpch100g_samples = 500
+num_synthetic_samples = 500
 overwrite = False
+dec_args = []
 args = []
 results = []
 
@@ -46,49 +48,82 @@ impala_host = 'cp-2'
 impala_port = 21050
 
 # samples for instacart queries
+'''
 args.append(
     (impala_host, impala_port, 'instacart', 'orders', 'order_id',
      'order_hour_of_day', 'instacart', 'order_products', 'order_id', None,
-     'instacart_cent_sample', 'count', num_instacart_samples, False))
+     'instacart_cent_sample', 'count', num_instacart_samples, overwrite))
 args.append(
     (impala_host, impala_port, 'instacart', 'orders', 'order_id',
      'days_since_prior', 'instacart', 'order_products', 'order_id', None,
-     'instacart_cent_sample', 'sum', num_instacart_samples, False))
+     'instacart_cent_sample', 'sum', num_instacart_samples, overwrite))
 args.append((impala_host, impala_port, 'instacart', 'orders', 'order_id',
              'order_dow', 'instacart', 'order_products', 'order_id', None,
-             'instacart_cent_sample', 'avg', num_instacart_samples, False))
+             'instacart_cent_sample', 'avg', num_instacart_samples, overwrite))
 
 # samples for movielens queries
+args.append(
+    (impala_host, impala_port, 'movielens', 'ratings', 'movieid', 'rating',
+     'movielens', 'movies', 'movieid', None, 'movielens_cent_sample', 'count',
+     num_movielens_samples, overwrite))
 args.append((impala_host, impala_port, 'movielens', 'ratings', 'movieid',
              'rating', 'movielens', 'movies', 'movieid', None,
-             'movielens_cent_sample', 'count', num_movielens_samples, False))
+             'movielens_cent_sample', 'sum', num_movielens_samples, overwrite))
 args.append((impala_host, impala_port, 'movielens', 'ratings', 'movieid',
              'rating', 'movielens', 'movies', 'movieid', None,
-             'movielens_cent_sample', 'sum', num_movielens_samples, False))
-args.append((impala_host, impala_port, 'movielens', 'ratings', 'movieid',
-             'rating', 'movielens', 'movies', 'movieid', None,
-             'movielens_cent_sample', 'avg', num_movielens_samples, False))
+             'movielens_cent_sample', 'avg', num_movielens_samples, overwrite))
+'''
 
 # samples for tpch100g queries
 args.append(
     (impala_host, impala_port, 'tpch100g_parquet', 'lineitem', 'l_orderkey',
      'l_quantity', 'tpch100g_parquet', 'orders', 'o_orderkey', None,
-     'tpch100g_cent_sample', 'count', num_tpch100g_samples, False))
+     'tpch100g_cent_sample', 'count', num_tpch100g_samples, overwrite))
 args.append(
     (impala_host, impala_port, 'tpch100g_parquet', 'lineitem', 'l_orderkey',
      'l_quantity', 'tpch100g_parquet', 'orders', 'o_orderkey', None,
-     'tpch100g_cent_sample', 'sum', num_tpch100g_samples, False))
+     'tpch100g_cent_sample', 'sum', num_tpch100g_samples, overwrite))
 args.append(
     (impala_host, impala_port, 'tpch100g_parquet', 'lineitem', 'l_orderkey',
      'l_extendedprice', 'tpch100g_parquet', 'orders', 'o_orderkey', None,
-     'tpch100g_cent_sample', 'avg', num_tpch100g_samples, False))
+     'tpch100g_cent_sample', 'avg', num_tpch100g_samples, overwrite))
 
+# cent samples for synthetic
+for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
+    for rightDist in ['uniform_2', 'normal_2', 'powerlaw_2']:
+        for agg in ['count', 'sum', 'avg']:
+            args.append((impala_host, impala_port, 'synthetic_10m', leftDist,
+                         'col1', 'col2', 'synthetic_10m', rightDist, 'col1',
+                         None, 'synthetic_10m_cent_sample', agg,
+                         num_synthetic_samples, overwrite))
+
+# dec samples for synthetic
+dists = []
+for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
+    for rightDist in ['uniform_2', 'normal_2', 'powerlaw_2']:
+        dists.append((leftDist, rightDist))
+
+for dist in dists:
+    for agg in ['count', 'sum', 'avg']:
+        dec_args.append((impala_host, impala_port, 'synthetic_10m', dist[0],
+                         'col1', 'col2', 'synthetic_10m', dist[1], 'col1',
+                         None, 'synthetic_10m_dec_sample', agg,
+                         num_synthetic_samples, overwrite))
+
+# create samples
 for arg in args:
     results.append(
         pool.apply_async(sg.create_cent_sample_pair_from_impala,
                          arg,
                          callback=callback_success,
                          error_callback=callback_error))
+for arg in dec_args:
+    results.append(
+        pool.apply_async(sg.create_dec_sample_pair_from_impala,
+                         arg,
+                         callback=callback_success,
+                         error_callback=callback_error))
+
 pool.close()
 pool.join()
 

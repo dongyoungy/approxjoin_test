@@ -14,7 +14,7 @@ import scipy.stats as ss
 import pandas as pd
 
 hdfs_dir = '/tmp/approxjoin'
-raw_data_path = '/home/dyoon/work/approxjoin_data/raw_data'
+raw_data_path = '/media/hdd/approxjoin_test/synthetic/data'
 text_schema = 'approxjoin_text'
 parquet_schema = 'approxjoin_parquet'
 impala_host = 'cp-2'

@@ -1017,7 +1017,8 @@ def create_preset_sample_pair_from_impala(host,
                                           q,
                                           num_sample,
                                           overwrite=False):
-    np.random.seed(int(time.time()))
+    # seed the rng
+    np.random.seed((int(time.time()) + threading.get_ident()) % (2**32))
     conn = impaladb.connect(host, port)
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(target_schema))
@@ -1030,39 +1031,51 @@ def create_preset_sample_pair_from_impala(host,
         S2_name = S2_name.replace('.', '_')
 
         if overwrite:
-            cur.execute("DROP TABLE IF EXISTS {}".format(S1_name))
-            cur.execute("DROP TABLE IF EXISTS {}".format(S2_name))
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+                target_schema, S1_name))
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+                target_schema, S2_name))
 
-            create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-            SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
-            FROM {2}.{3}
-            ) tmp
-            WHERE pval <= {4} * 1000000 and qval <= {5}
-            """.format(target_schema, S1_name, T1_schema, T1_table, p, q,
-                       hash_num + i, T1_join_col)
+        create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * 1000000 and qval <= {5}
+        """.format(target_schema, S1_name, T1_schema, T1_table, p, q,
+                   hash_num + i, T1_join_col)
 
-            create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-            SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
-            FROM {2}.{3}
-            ) tmp
-            WHERE pval <= {4} * 1000000 and qval <= {5}
-            """.format(target_schema, S2_name, T2_schema, T2_table, p, q,
-                       hash_num + i, T2_join_col)
+        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * 1000000 and qval <= {5}
+        """.format(target_schema, S2_name, T2_schema, T2_table, p, q,
+                   hash_num + i, T2_join_col)
 
-            cur.execute(create_S1_sql)
-            cur.execute(create_S2_sql)
+        cur.execute(create_S1_sql)
+        cur.execute(create_S2_sql)
+        cur.execute("COMPUTE STATS {}.{}".format(target_schema, S1_name))
+        cur.execute("COMPUTE STATS {}.{}".format(target_schema, S2_name))
 
 
-def create_dec_sample_pair_from_impala(T1_schema, T1_table, T1_join_col,
-                                       T1_agg_col, T2_schema, T2_table,
-                                       T2_join_col, T1_where, sample_schema,
-                                       agg_type):
-    np.random.seed(int(time.time()))
-
-    S1_name = "s__{}__{}__{}__{}__{}".format(T1_table, T1_join_col, T1_agg_col,
-                                             type, 1)
-    S2_name = "s__{}__{}__{}__{}".format(T2_table, T2_join_col, type, 2)
-
+def create_dec_sample_pair_from_impala(host,
+                                       port,
+                                       T1_schema,
+                                       T1_table,
+                                       T1_join_col,
+                                       T1_agg_col,
+                                       T2_schema,
+                                       T2_table,
+                                       T2_join_col,
+                                       T1_where,
+                                       sample_schema,
+                                       agg_type,
+                                       num_sample,
+                                       overwrite=False):
+    # seed the rng
+    hash_val = int(hashlib.sha1(agg_type.encode()).hexdigest(), 16) % (10**8)
+    np.random.seed(
+        (int(time.time()) + hash_val + threading.get_ident()) % (2**32))
     conn = impaladb.connect(impala_host, impala_port)
     cur = conn.cursor()
 
@@ -1078,9 +1091,17 @@ def create_dec_sample_pair_from_impala(T1_schema, T1_table, T1_join_col,
         T1_join_key_count = row[0]
     cur.close()
 
+    if T1_table == 'uniform_1':
+        worst_table = 'uniform_max_var_2'
+    elif T1_table == 'normal_1':
+        worst_table = 'normal_max_var_2'
+    elif T1_table == 'powerlaw_1':
+        worst_table = 'powerlaw_max_var_2'
+
+
     cur = conn.cursor()
     T2_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
-        T2_join_col, T2_schema, T2_table)
+        T2_join_col, T2_schema, worst_table)
     cur.execute(T2_join_key_count_sql)
     results = cur.fetchall()
     for row in results:
@@ -1089,9 +1110,9 @@ def create_dec_sample_pair_from_impala(T1_schema, T1_table, T1_join_col,
 
     num_keys = max([T1_join_key_count, T2_join_key_count])
 
-    a_v = np.zeros((num_keys, 2))
-    b_v = np.zeros((num_keys, 2))
-    mu_v = np.zeros((num_keys, 2))
+    a_v = np.zeros((num_keys, 3))
+    b_v = np.zeros((num_keys, 3))
+    mu_v = np.zeros((num_keys, 3))
     var_v = np.zeros((num_keys, 2))
 
     keys = np.arange(1, num_keys + 1)
@@ -1117,37 +1138,42 @@ def create_dec_sample_pair_from_impala(T1_schema, T1_table, T1_join_col,
             cnt = row[1]
             mean = row[2]
             var = row[3]
-            a_v[col1 - 1, 0] = cnt
-            mu_v[col1 - 1, 0] = mean
+            a_v[col1 - 1, 1] = cnt
+            mu_v[col1 - 1, 1] = mean
             if var is None:
                 var = 0
-            var_v[col1 - 1, 0] = var
-    a_v[:, 1] = a_v[:, 0]**2
-    mu_v[:, 1] = mu_v[:, 0]**2
+            var_v[col1 - 1, 1] = var
+    a_v[:, 2] = a_v[:, 1]**2
+    mu_v[:, 2] = mu_v[:, 1]**2
 
     p = 0
     n_b = 0
     a_star = max(a_v[:, 1])
 
-    if type == 'count':
+    if agg_type == 'count':
         cur = conn.cursor()
-        T2_max_group_by_count_sql = """SELECT max(cnt) FROM (SELECT {0}, COUNT(*) as cnt FROM {1}.{2} GROUP BY {0}) tmp;
-        """.format(T2_join_col, T2_schema, T2_table)
-        cur.execute(T2_max_group_by_count_sql)
+        T2_count_sql = """SELECT COUNT(*) FROM {}.{}""".format(
+            T2_schema, worst_table)
+        #  T2_max_group_by_count_sql = """SELECT max(cnt) FROM (SELECT {0}, COUNT(*) as cnt FROM {1}.{2} GROUP BY {0}) tmp;
+        #  """.format(T2_join_col, T2_schema, T2_table)
+        cur.execute(T2_count_sql)
         results = cur.fetchall()
         for row in results:
-            n_b = row[0]
+            b_star = int(row[0] * 0.75)
         #  sum1 = e1 * e2 * (a_star^2 * n_b^2 + a_star^2 * n_b + a_star * n_b^2 + a_star * n_b);
         #  sum2 = a_star * n_b;
-        sum1 = e1 * e2 * (a_star**2 * n_b**2 + a_star**2 * n_b +
-                          a_star * n_b**2 + a_star * n_b)
-        sum2 = a_star * n_b
-        val = math.sqrt(sum1 / sum2)
+        #  sum1 = e1 * e2 * (a_star**2 * n_b**2 + a_star**2 * n_b +
+        #  a_star * n_b**2 + a_star * n_b)
+        #  sum2 = a_star * n_b
+        #  val = math.sqrt(sum1 / sum2)
+        #  p = min([1, max([e1, e2, val])])
+        # new formulation
+        val = math.sqrt(e1 * e2 * (a_star * b_star - a_star - b_star + 1))
         p = min([1, max([e1, e2, val])])
-    elif type == 'sum':
+    elif agg_type == 'sum':
         cur = conn.cursor()
         T2_table_count_sql = """SELECT COUNT(*) FROM {0}.{1};
-        """.format(T2_schema, T2_table)
+        """.format(T2_schema, worst_table)
         cur.execute(T2_table_count_sql)
         results = cur.fetchall()
         for row in results:
@@ -1165,7 +1191,7 @@ def create_dec_sample_pair_from_impala(T1_schema, T1_table, T1_join_col,
         v2 = np.argmax(v[:, 2])
         a_vi = [a_v[v1, 1], a_v[v2, 1]]
         mu_vi = [mu_v[v1, 1], mu_v[v2, 1]]
-        var_vi = [var_v[v1, 2], var_v[v2, 1]]
+        var_vi = [var_v[v1, 1], var_v[v2, 1]]
         #  quadratic equation for h1(p) - h2(p) = 0
         eq = [
             h_p2(e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]) -
@@ -1176,128 +1202,255 @@ def create_dec_sample_pair_from_impala(T1_schema, T1_table, T1_join_col,
             h_const(e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
         ]
         r = np.roots(eq)
-        p1 = r[0]
-        p2 = r[1]
 
-        #  % calculate first sum in the formula
-        #  sum1 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b^2);
-        #
-        #  % second sum
-        #  sum2 = sum(a_v(v1, 3) .* mu_v(v1, 3) .* n_b);
-        #
-        #  % third.. and so on
-        #  sum3 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b^2);
-        #
-        #  sum4 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b);
-        #
-        #  sum5 = sum(a_v(v1, 2) .* (mu_v(v1, 3) + var_v(v1, 2)) .* n_b);
-        #
-        #  % calculate the value
-        #  val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
-        #  val = sqrt(val);
-        #
-        #  p3 = min([1 max([e1 e2 val])]);
-        #
-        #  sum1 = sum(a_v(v2, 3) .* mu_v(v2, 3) .* n_b^2);
-        #  sum2 = sum(a_v(v2, 3) .* mu_v(v2, 3) .* n_b);
-        #  sum3 = sum(a_v(v2, 2) .* (mu_v(v2, 3) + var_v(v2, 2)) .* n_b^2);
-        #  sum4 = sum(a_v(v2, 2) .* (mu_v(v2, 3) + var_v(v2, 2)) .* n_b);
-        #  sum5 = sum(a_v(v2, 2) .* (mu_v(v2, 3) + var_v(v2, 2)) .* n_b);
-        #  val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5;
-        #  val = sqrt(val);
-        #
-        #  p4 = min([1 max([e1 e2 val])]);
-        #
-        #  p5 = max(e1, e2);
-        #
-        #  pval = [p1; p2; p3; p4; p5];
-        #  pval(1,2) = max([h(p1, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p1, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
-        #  pval(2,2) = max([h(p2, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p2, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
-        #  pval(3,2) = max([h(p3, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p3, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
-        #  pval(4,2) = max([h(p4, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p4, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
-        #  pval(5,2) = max([h(p5, e1, e2, a_vi(1), n_b, mu_vi(1), var_vi(1)) h(p5, e1, e2, a_vi(2), n_b, mu_vi(2), var_vi(2))]);
-        #
-        #  pval(find(~isreal(pval(:,1))), :) = [];
-        #  pval(find(pval(:,1) < max(e1, e2)), :) = [];
-        #
-        #  [m i] = min(pval(:,2));
-        #
-        #  p = pval(i,1);
-        sum1 = a_v[v1, 2] * mu_v[v1, 2] * n_b**2
-        sum2 = a_v[v1, 2] * mu_v[v1, 2] * n_b
-        sum3 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b**2
-        sum4 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
-        sum5 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
-        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
-        val = math.sqrt(val)
-        p3 = min([1, max([e1, e2, val])])
+        if len(r) == 0:
+            sum1 = a_v[v1, 2] * mu_v[v1, 2] * n_b**2
+            sum2 = a_v[v1, 2] * mu_v[v1, 2] * n_b
+            sum3 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b**2
+            sum4 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
+            sum5 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
+            val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
+            val = math.sqrt(val)
+            p = min([1, max([e1, e2, val])])
+        else:
+            p1 = r[0]
+            p2 = r[1]
+            sum1 = a_v[v1, 2] * mu_v[v1, 2] * n_b**2
+            sum2 = a_v[v1, 2] * mu_v[v1, 2] * n_b
+            sum3 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b**2
+            sum4 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
+            sum5 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
+            val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
+            val = math.sqrt(val)
+            p3 = min([1, max([e1, e2, val])])
 
-        sum1 = a_v[v2, 2] * mu_v[v2, 2] * n_b**2
-        sum2 = a_v[v2, 2] * mu_v[v2, 2] * n_b
-        sum3 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b**2
-        sum4 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b
-        sum5 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b
-        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
-        val = math.sqrt(val)
-        p4 = min([1, max([e1, e2, val])])
+            sum1 = a_v[v2, 2] * mu_v[v2, 2] * n_b**2
+            sum2 = a_v[v2, 2] * mu_v[v2, 2] * n_b
+            sum3 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b**2
+            sum4 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b
+            sum5 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b
+            val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
+            val = math.sqrt(val)
+            p4 = min([1, max([e1, e2, val])])
 
-        p5 = max([e1, e2])
+            p5 = max([e1, e2])
 
-        pval = np.zeros((5, 2))
-        pval[0, 0] = p1
-        pval[1, 0] = p2
-        pval[2, 0] = p3
-        pval[3, 0] = p4
-        pval[4, 0] = p5
-        pval[0, 1] = max([
-            h(p1, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
-            h(p1, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-        ])
-        pval[1, 1] = max([
-            h(p2, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
-            h(p2, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-        ])
-        pval[2, 1] = max([
-            h(p3, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
-            h(p3, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-        ])
-        pval[3, 1] = max([
-            h(p4, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
-            h(p4, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-        ])
-        pval[4, 1] = max([
-            h(p5, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
-            h(p5, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
-        ])
-        check_real = np.isreal(pval[:, 0])
-        pval = np.delete(pval, np.argwhere(check_real is False), 0)
-        pval = np.delete(pval, np.argwhere(pval[:, 0] < max([e1, e2])), 0)
-        m = np.argmin(pval[:, 1])
-        p = pval[m, 0]
+            pval = np.zeros((5, 2))
+            pval[0, 0] = p1
+            pval[1, 0] = p2
+            pval[2, 0] = p3
+            pval[3, 0] = p4
+            pval[4, 0] = p5
+            pval[0, 1] = max([
+                h(p1, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
+                h(p1, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
+            ])
+            pval[1, 1] = max([
+                h(p2, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
+                h(p2, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
+            ])
+            pval[2, 1] = max([
+                h(p3, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
+                h(p3, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
+            ])
+            pval[3, 1] = max([
+                h(p4, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
+                h(p4, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
+            ])
+            pval[4, 1] = max([
+                h(p5, e1, e2, a_vi[0], n_b, mu_vi[0], var_vi[0]),
+                h(p5, e1, e2, a_vi[1], n_b, mu_vi[1], var_vi[1])
+            ])
+            check_real = np.isreal(pval[:, 0])
+            pval = np.delete(pval, np.argwhere(check_real is False), 0)
+            pval = np.delete(pval, np.argwhere(pval[:, 0] < max([e1, e2])), 0)
+            m = np.argmin(pval[:, 1])
+            p = pval[m, 0]
+    elif agg_type == 'avg':
+        T2_group_by_count_sql = """SELECT {0}, COUNT(*) FROM {1}.{2} GROUP BY {0};
+        """.format(T2_join_col, T2_schema, worst_table)
+        cur.execute(T2_group_by_count_sql)
+        while True:
+            results = cur.fetchmany(fetch_size)
+            if not results:
+                break
+
+            for row in results:
+                col1 = row[0]
+                cnt = row[1]
+                b_v[col1 - 1, 1] = cnt
+        b_v[:, 2] = b_v[:, 1]**2
+        # estimate using sketch
+        num_sketch = 1000
+        v1 = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,1])
+        v2 = 0  # sum(a_v[:,1] * (mu_v[:,2] + var_v[:,1]) * b_v[:,1])
+        v3 = 0  # sum(a_v[:,2] * mu_v[:,2] * b_v[:,2])
+        v4 = 0  # sum(a_v[:,2] * mu_v[:,2] * b_v[:,1])
+        v5 = 0  # sum(a_v[:,1] * (mu_v[:,2] + var_v[:,1]) * b_v[:,2])
+        v6 = 0  # sum(a_v[:,1] * b_v[:,1]))
+        v7 = 0  # sum(a_v[:,2] * mu_v[:,1] * b_v[:,2])
+        v8 = 0  # sum(a_v[:,2] * mu_v[:,1] * b_v[:,1])
+        v9 = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,2])
+        v10 = 0  # sum(a_v[:,2] * b_v[:,2]))
+        v11 = 0  # sum(a_v[:,2] * b_v[:,1]))
+        v12 = 0  # sum(a_v[:,1] * b_v[:,2]))
+        for i in range(0, num_sketch):
+            print("current_sketch = {}".format(i))
+            x = np.random.randint(0, 2, size=num_keys)
+            x[x == 0] = -1
+            v1_1 = sum(a_v[:, 1] * mu_v[:, 1] * x[:])
+            v1_2 = sum(b_v[:, 1] * x[:])
+            v1 = v1 + (v1_1 * v1_2)
+            v2_1 = sum(a_v[:, 1] * (mu_v[:, 2] + var_v[:, 1]) * x[:])
+            v2_2 = v1_2
+            v2 = v2 + (v2_1 * v1_2)
+            v3_1 = sum(a_v[:, 2] * mu_v[:, 2] * x[:])
+            v3_2 = sum(b_v[:, 2] * x[:])
+            v3 = v3 + (v3_1 * v3_2)
+            v4_1 = v3_1
+            v4_2 = v1_2
+            v4 = v4 + (v4_1 * v4_2)
+            v5_1 = v2_1
+            v5_2 = v3_2
+            v5 = v5 + (v5_1 * v5_2)
+            v6_1 = sum(a_v[:, 1] * x[:])
+            v6_2 = v1_2
+            v6 = v6 + (v6_1 * v6_2)
+            v7_1 = sum(a_v[:, 2] * mu_v[:, 1] * x[:])
+            v7_2 = v3_2
+            v7 = v7 + (v7_1 * v7_2)
+            v8_1 = v7_1
+            v8_2 = v1_2
+            v8 = v8 + (v8_1 * v8_2)
+            v9_1 = v1_1
+            v9_2 = v3_2
+            v9 = v9 + (v9_1 * v9_2)
+            v10_1 = sum(a_v[:, 2] * x[:])
+            v10_2 = v3_2
+            v10 = v10 + (v10_1 * v10_2)
+            v11_1 = v10_1
+            v11_2 = v1_2
+            v11 = v11 + (v11_1 * v11_2)
+            v12_1 = v6_1
+            v12_2 = v3_2
+            v12 = v12 + (v12_1 * v12_2)
+
+        v1 = v1 / num_sketch
+        v2 = v2 / num_sketch
+        v3 = v3 / num_sketch
+        v4 = v4 / num_sketch
+        v5 = v5 / num_sketch
+        v6 = v6 / num_sketch
+        v7 = v7 / num_sketch
+        v8 = v8 / num_sketch
+        v9 = v9 / num_sketch
+        v10 = v10 / num_sketch
+        v11 = v11 / num_sketch
+        v12 = v12 / num_sketch
+
+        A_denom = v1**2
+        A1 = v2 / A_denom
+        A2 = v3 / A_denom
+        A3 = v4 / A_denom
+        A4 = v5 / A_denom
+        A = A1 + A2 - A3 - A4
+
+        B_denom = v6 * v1
+        B1 = 1 / v6
+        B2 = v7 / B_denom
+        B3 = v8 / B_denom
+        B4 = v9 / B_denom
+        B = B1 + B2 - B3 - B4
+
+        C_denom = v6**2
+        C1 = v6 / C_denom
+        C2 = v10 / C_denom
+        C3 = v11 / C_denom
+        C4 = v12 / C_denom
+        C = C1 + C2 - C3 - C4
+
+        D = (1 / e1 * e2) * (A1 - (2 * B1) + C1)
+
+        val1 = A - (2 * B) + C
+        val2 = D
+
+        if val1 <= 0 and val2 > 0:
+            p = max(e1, e2)
+        elif val1 > 0 and val2 <= 0:
+            p = 1
+        elif val1 > 0 and val2 > 0:
+            val = (A - (2 * B) + C) / D
+            if val > 0:
+                val = math.sqrt(val)
+            p = min([1, max([e1, e2, val])])
+        else:
+            p_minus = max(e1, e2)
+            p_plus = 1
+            pval1 = (1 / p_minus) * val1 + p_minus * val2
+            pval2 = (1 / p_plus) * val1 + p_plus * val2
+            if pval1 < pval2:
+                p = p_minus
+            else:
+                p = p_plus
+    else:
+        print('Unsupported type: {}'.format(agg_type))
+        raise ValueError
 
     q1 = e1 / p
     q2 = e2 / p
-    ts = int(time.time())
-
-    create_S1_sql = """CREATE TABLE {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-    SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
-    FROM {2}.{3} {8}
-    ) tmp
-    WHERE pval <= {4} * 100000 and qval <= {5}
-    """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1, ts,
-               T1_join_col, T1_where)
-
-    create_S2_sql = """CREATE TABLE {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-    SELECT *, rand(unix_timestamp()) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
-    FROM {2}.{3}
-    ) tmp
-    WHERE pval <= {4} * 100000 and qval <= {5}
-    """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2, ts,
-               T2_join_col)
-
+    ts = (int(time.time()) + np.random.randint(1, 10000000)) % (2**32)
     cur = conn.cursor()
-    cur.execute(create_S1_sql)
-    cur.execute(create_S2_sql)
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
+
+    for i in range(1, num_sample + 1):
+        S1_name = "s__{}__{}__{}__{}__{}__{}".format(T1_table, T1_join_col,
+                                                     T1_agg_col, agg_type, i,
+                                                     1)
+        S2_name = "s__{}__{}__{}__{}__{}".format(T2_table, T2_join_col,
+                                                 agg_type, i, 2)
+
+        if overwrite:
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+                sample_schema, S1_name))
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+                sample_schema, S2_name))
+
+        create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        FROM {2}.{3} {8}
+        ) tmp
+        WHERE pval <= {4} * 1000000 and qval <= {5}
+        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1, ts + i,
+                   T1_join_col, T1_where)
+
+        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * 1000000 and qval <= {5}
+        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2, ts + i,
+                   T2_join_col)
+
+        cur.execute(create_S1_sql)
+        cur.execute(create_S2_sql)
+        conn.commit()
+
+        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
+        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
+
+    # add metadata
+    create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
+    t1_join_col STRING, t2_join_col STRING, t1_agg_col STRING, t1_where_col STRING,
+    p DOUBLE, q DOUBLE, ts TIMESTAMP ) STORED AS PARQUET
+    """.format(sample_schema)
+    cur.execute(create_metatable_sql)
+
+    ts = int(time.time())
+    insert_meta = """INSERT INTO TABLE {}.meta VALUES ('{}','{}','{}','{}','{}','{}',{},{},{},now())""".format(
+        sample_schema, T1_table, T2_table, agg_type, T1_join_col, T2_join_col,
+        T1_agg_col, 'NULL', p, q1)
+    cur.execute(insert_meta)
+    cur.close()
 
 
 def create_cent_sample_pair_from_impala(host,
@@ -1314,7 +1467,10 @@ def create_cent_sample_pair_from_impala(host,
                                         agg_type,
                                         num_sample,
                                         overwrite=False):
-    np.random.seed(int(time.time()))
+    # seed the rng
+    hash_val = int(hashlib.sha1(agg_type.encode()).hexdigest(), 16) % (10**8)
+    np.random.seed(
+        (int(time.time()) + hash_val + threading.get_ident()) % (2**32))
 
     conn = impaladb.connect(host, port)
     cur = conn.cursor()
@@ -1348,10 +1504,10 @@ def create_cent_sample_pair_from_impala(host,
     var_v = np.zeros((num_keys, 2))
 
     keys = np.arange(1, num_keys + 1)
-    a_v[:, 0] = keys
-    b_v[:, 0] = keys
-    mu_v[:, 0] = keys
-    var_v[:, 0] = keys
+    #  a_v[:, 0] = keys
+    #  b_v[:, 0] = keys
+    #  mu_v[:, 0] = keys
+    #  var_v[:, 0] = keys
 
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(sample_schema))
@@ -1462,7 +1618,8 @@ def create_cent_sample_pair_from_impala(host,
 
     q1 = e1 / p
     q2 = e2 / p
-    ts = int(time.time()) + np.random.randint(1, 1000000)
+    #  ts = int(time.time()) + np.random.randint(1, 1000000)
+    ts = (int(time.time()) + np.random.randint(1, 10000000)) % (2**32)
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
 
@@ -1474,15 +1631,17 @@ def create_cent_sample_pair_from_impala(host,
                                                  agg_type, i, 2)
 
         if overwrite:
-            cur.execute("DROP TABLE IF EXISTS {}".format(S1_name))
-            cur.execute("DROP TABLE IF EXISTS {}".format(S2_name))
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+                sample_schema, S1_name))
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+                sample_schema, S2_name))
 
         create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
         SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
         FROM {2}.{3} {8}
         ) tmp
         WHERE pval <= {4} * 1000000 and qval <= {5}
-        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1, ts,
+        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1, ts + i,
                    T1_join_col, T1_where)
 
         create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
@@ -1490,11 +1649,15 @@ def create_cent_sample_pair_from_impala(host,
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * 1000000 and qval <= {5}
-        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2, ts,
+        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2, ts + i,
                    T2_join_col)
 
         cur.execute(create_S1_sql)
         cur.execute(create_S2_sql)
+        conn.commit()
+
+        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
+        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
 
     # add metadata
     create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
