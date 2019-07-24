@@ -138,10 +138,10 @@ def run_synthetic_ours(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{}__{}__{}__{}__{}".format(left_dist, t1_join_col,
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(left_dist, right_dist, t1_join_col,
                                                      t1_agg_col, query_type, i,
                                                      1)
-        S2_name = "s__{}__{}__{}__{}__{}".format(right_dist, t2_join_col,
+        S2_name = "s__{}__{}__{}__{}__{}__{}".format(left_dist, right_dist, t2_join_col,
                                                  query_type, i, 2)
 
         cur = conn.cursor()
@@ -255,9 +255,10 @@ def run_synthetic_preset(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(left_dist, p, q, i, 1)
-        S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(
-            right_dist, p, q, i, 2)
+        S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            left_dist, right_dist, p, q, i, 1)
+        S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            left_dist, right_dist, p, q, i, 2)
         S1_name = S1_name.replace('.', '_')
         S2_name = S2_name.replace('.', '_')
         cur = conn.cursor()

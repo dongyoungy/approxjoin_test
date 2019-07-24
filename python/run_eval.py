@@ -70,12 +70,14 @@ if overwrite:
 for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
     for rightDist in ['uniform_2', 'normal_2', 'powerlaw_2']:
         for agg in ['count', 'sum', 'avg']:
-            synthetic_ours.append((impala_host, impala_port, 'synthetic_10m',
-                                   'synthetic_10m_cent_sample', agg, leftDist,
-                                   rightDist, num_synthetic_samples, False))
-            synthetic_ours.append((impala_host, impala_port, 'synthetic_10m',
-                                   'synthetic_10m_dec_sample', agg, leftDist,
-                                   rightDist, num_synthetic_samples, False))
+            synthetic_ours.append(
+                (impala_host, impala_port, 'synthetic_10m',
+                 'synthetic_10m_cent_sample_new', agg, leftDist, rightDist,
+                 num_synthetic_samples, False))
+            synthetic_ours.append(
+                (impala_host, impala_port, 'synthetic_10m',
+                 'synthetic_10m_dec_sample_new', agg, leftDist, rightDist,
+                 num_synthetic_samples, False))
 
 # evaluate synthetic (preset)
 for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
@@ -84,9 +86,19 @@ for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
             for p in prob:
                 synthetic_preset.append(
                     (impala_host, impala_port, 'synthetic_10m',
-                     'synthetic_10m_preset', agg, leftDist, rightDist, p[0],
-                     p[1], num_synthetic_samples, False))
+                     'synthetic_10m_preset_new', agg, leftDist, rightDist,
+                     p[0], p[1], num_synthetic_samples, False))
 
+# evaluate synthetic (preset)
+for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
+    for rightDist in ['uniform_2', 'normal_2', 'powerlaw_2']:
+        for agg in ['count', 'sum', 'avg']:
+            for p in prob:
+                synthetic_preset.append(
+                    (impala_host, impala_port, 'synthetic_10m',
+                     'synthetic_10m_preset_new', agg, leftDist, rightDist,
+                     p[0], p[1], num_synthetic_samples, False))
+'''
 # evaluate instacart (cent)
 for agg in ['count', 'sum', 'avg']:
     instacart_ours.append(
@@ -112,18 +124,19 @@ for agg in ['count', 'sum', 'avg']:
         movielens_preset.append(
             (impala_host, impala_port, 'movielens', 'movielens_preset', agg,
              p[0], p[1], num_movielens_samples, False))
+'''
+
 # evaluate tpch (ours)
 for agg in ['count', 'sum', 'avg']:
-    tpch_ours.append(
-        (impala_host, impala_port, 'tpch100g_parquet', 'tpch100g_cent_sample',
-         agg, num_movielens_samples, False))
+    tpch_ours.append((impala_host, impala_port, 'tpch100g_parquet',
+                      'tpch100g_cent_sample', agg, num_tpch_samples, False))
 
 # evaluate tpch (preset)
 for agg in ['count', 'sum', 'avg']:
     for p in prob:
         tpch_preset.append(
             (impala_host, impala_port, 'tpch100g_parquet', 'tpch100g_preset',
-             agg, p[0], p[1], num_movielens_samples, False))
+             agg, p[0], p[1], num_tpch_samples, False))
 
 # run
 results = []

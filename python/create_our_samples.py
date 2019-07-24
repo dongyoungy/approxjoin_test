@@ -25,14 +25,14 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 5
+num_proc = 32
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 1000
 num_movielens_samples = 1000
 num_tpch100g_samples = 500
 num_synthetic_samples = 500
-overwrite = True
+overwrite = False
 dec_args = []
 args = []
 results = []
@@ -44,7 +44,7 @@ T2_schema = 'instacart'
 T2_table = 'order_products'
 T2_join_col = 'order_id'
 target_schema = 'instacart_preset'
-impala_host = 'cp-2'
+impala_host = 'cp-5'
 impala_port = 21050
 
 # samples for instacart queries
@@ -87,6 +87,7 @@ args.append(
     (impala_host, impala_port, 'tpch100g_parquet', 'lineitem', 'l_orderkey',
      'l_extendedprice', 'tpch100g_parquet', 'orders', 'o_orderkey', None,
      'tpch100g_cent_sample', 'avg', num_tpch100g_samples, overwrite))
+'''
 
 # cent samples for synthetic
 for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
@@ -94,9 +95,8 @@ for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
         for agg in ['count', 'sum', 'avg']:
             args.append((impala_host, impala_port, 'synthetic_10m', leftDist,
                          'col1', 'col2', 'synthetic_10m', rightDist, 'col1',
-                         None, 'synthetic_10m_cent_sample', agg,
+                         None, 'synthetic_10m_cent_sample_new', agg,
                          num_synthetic_samples, overwrite))
-'''
 
 # dec samples for synthetic
 dists = []
@@ -105,11 +105,10 @@ for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
         dists.append((leftDist, rightDist))
 
 for dist in dists:
-    #  for agg in ['count', 'sum', 'avg']:
-    for agg in ['avg']:
+    for agg in ['count', 'sum', 'avg']:
         dec_args.append(('cp-4', impala_port, 'synthetic_10m', dist[0], 'col1',
                          'col2', 'synthetic_10m', dist[1], 'col1', None,
-                         'synthetic_10m_dec_sample', agg,
+                         'synthetic_10m_dec_sample_new', agg,
                          num_synthetic_samples, overwrite))
 
 # create samples

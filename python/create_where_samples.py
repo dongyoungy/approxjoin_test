@@ -28,8 +28,8 @@ def callback_success(result):
 num_proc = 32
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
-num_instacart_samples = 1000
-num_synthetic_samples = 500
+num_instacart_samples = 1
+num_synthetic_samples = 1
 overwrite = False
 dec_args = []
 args = []
@@ -74,6 +74,7 @@ for leftDist in [
                          'col3', 'synthetic_10m_where_sample', agg, cond,
                          where_type, num_synthetic_samples, overwrite))
 
+# where samples for instacart
 for leftDist in ['orders']:
     for rightDist in ['order_products']:
         for agg in ['count', 'sum', 'avg']:
