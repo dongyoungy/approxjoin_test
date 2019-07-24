@@ -1,4 +1,10 @@
 import impala.dbapi as impaladb
+#  import time
+#  import string
+#  import random
+#  import multiprocessing
+import hashlib
+import uuid
 
 
 def drop_result_table(conn, schema):
@@ -16,8 +22,38 @@ def create_result_table(conn, schema):
     right_dist STRING, p DOUBLE, q DOUBLE, actual DOUBLE, estimate DOUBLE, ts TIMESTAMP) STORED AS PARQUET
     """.format(schema)
     cur.execute(create_result_table_sql)
-    cur.close()
     conn.commit()
+    cur.close()
+
+
+def clean_temp_tables(host, port, schema):
+    conn = impaladb.connect(host, port)
+    cur = conn.cursor()
+    cur.execute("SHOW TABLES IN {} LIKE 'result_temp_*'".format(schema))
+    result = cur.fetchall()
+    for row in result:
+        table = row[0]
+        sql = "DROP TABLE IF EXISTS {}.{}".format(schema, table)
+        print(sql)
+        conn.cursor().execute(sql)
+
+
+def create_temp_table(conn, schema):
+    random_str = hashlib.md5(str(uuid.uuid1().bytes).encode()).hexdigest()[:32]
+    temp_table = "result_temp_" + random_str
+    cur = conn.cursor()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(schema, temp_table))
+    conn.commit()
+    cur.close()
+
+    cur = conn.cursor()
+    create_temp_table_sql = """CREATE TABLE IF NOT EXISTS {}.{} (query STRING, idx INT, left_dist STRING,
+    right_dist STRING, p DOUBLE, q DOUBLE, actual DOUBLE, estimate DOUBLE, ts TIMESTAMP) STORED AS PARQUET
+    """.format(schema, temp_table)
+    cur.execute(create_temp_table_sql)
+    conn.commit()
+    cur.close()
+    return temp_table
 
 
 def run_synthetic_ours(host,
@@ -34,6 +70,8 @@ def run_synthetic_ours(host,
         drop_result_table(conn, sample_schema)
     # create result table
     create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
 
     # get p,q,t1_join_col, t2_join_col, t1_agg_col
     sql = """SELECT p, q, t1_join_col, t2_join_col, t1_agg_col FROM {}.meta WHERE t1_name = '{}'
@@ -85,8 +123,21 @@ def run_synthetic_ours(host,
         return
     cur.close()
 
+    # get start idx
+    cur = conn.cursor()
+    sql = """SELECT max(idx) FROM {}.results WHERE query = '{}' AND left_dist = '{}' AND
+    right_dist = '{}' GROUP BY query, left_dist, right_dist""".format(
+        sample_schema, query_type, left_dist, right_dist)
+    cur.execute(sql)
+    result = cur.fetchall()
+    start_idx = 0
+    for row in result:
+        start_idx = row[0] if row[0] is not None else 0
+    start_idx = start_idx + 1
+    cur.close()
+
     # get estimate for each sample pair
-    for i in range(1, num_sample + 1):
+    for i in range(start_idx, num_sample + 1):
         S1_name = "s__{}__{}__{}__{}__{}__{}".format(left_dist, t1_join_col,
                                                      t1_agg_col, query_type, i,
                                                      1)
@@ -125,12 +176,20 @@ def run_synthetic_ours(host,
 
         # record result
         cur = conn.cursor()
-        add_result_sql = """INSERT INTO TABLE {}.results VALUES (
+        add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
         '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
-        )""".format(sample_schema, query_type, i, left_dist, right_dist, p, q,
-                    actual, estimate)
+        )""".format(sample_schema, temp_table, query_type, i, left_dist,
+                    right_dist, p, q, actual, estimate)
         cur.execute(add_result_sql)
         cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
 
 
 def run_synthetic_preset(host,
@@ -150,6 +209,8 @@ def run_synthetic_preset(host,
 
     # create result table
     create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
 
     # get actual value first
     cur = conn.cursor()
@@ -179,8 +240,21 @@ def run_synthetic_preset(host,
         return
     cur.close()
 
+    # get start idx
+    cur = conn.cursor()
+    sql = """SELECT max(idx) FROM {}.results WHERE query = '{}' AND left_dist = '{}' AND
+    right_dist = '{}' and p = {} and q = {} GROUP BY query, left_dist, right_dist, p, q""".format(
+        sample_schema, query_type, left_dist, right_dist, p, q)
+    cur.execute(sql)
+    result = cur.fetchall()
+    start_idx = 0
+    for row in result:
+        start_idx = row[0] if row[0] is not None else 0
+    start_idx = start_idx + 1
+    cur.close()
+
     # get estimate for each sample pair
-    for i in range(1, num_sample + 1):
+    for i in range(start_idx, num_sample + 1):
         S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(left_dist, p, q, i, 1)
         S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(
             right_dist, p, q, i, 2)
@@ -218,12 +292,20 @@ def run_synthetic_preset(host,
 
         # record result
         cur = conn.cursor()
-        add_result_sql = """INSERT INTO TABLE {}.results VALUES (
+        add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
         '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
-        )""".format(sample_schema, query_type, i, left_dist, right_dist, p, q,
-                    actual, estimate)
+        )""".format(sample_schema, temp_table, query_type, i, left_dist,
+                    right_dist, p, q, actual, estimate)
         cur.execute(add_result_sql)
         cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
 
 
 def run_instacart_ours(host,
@@ -239,6 +321,8 @@ def run_instacart_ours(host,
 
     # create result table
     create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
 
     # get p,q,t1_join_col, t2_join_col, t1_agg_col
     sql = """SELECT p, q, t1_join_col, t2_join_col, t1_agg_col FROM {}.meta WHERE
@@ -288,8 +372,21 @@ def run_instacart_ours(host,
         return
     cur.close()
 
+    # get start idx
+    cur = conn.cursor()
+    sql = """SELECT max(idx) FROM {}.results WHERE query = '{}' AND left_dist = '{}' AND
+    right_dist = '{}' GROUP BY query, left_dist, right_dist""".format(
+        sample_schema, query_type, 'orders', 'order_products')
+    cur.execute(sql)
+    result = cur.fetchall()
+    start_idx = 0
+    for row in result:
+        start_idx = row[0] if row[0] is not None else 0
+    start_idx = start_idx + 1
+    cur.close()
+
     # get estimate for each sample pair
-    for i in range(1, num_sample + 1):
+    for i in range(start_idx, num_sample + 1):
         S1_name = "s__{}__{}__{}__{}__{}__{}".format('orders', t1_join_col,
                                                      t1_agg_col, query_type, i,
                                                      1)
@@ -334,12 +431,20 @@ def run_instacart_ours(host,
 
         # record result
         cur = conn.cursor()
-        add_result_sql = """INSERT INTO TABLE {}.results VALUES (
+        add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
         '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
-        )""".format(sample_schema, query_type, i, 'orders', 'order_products',
-                    p, q, actual, estimate)
+        )""".format(sample_schema, temp_table, query_type, i, 'orders',
+                    'order_products', p, q, actual, estimate)
         cur.execute(add_result_sql)
         cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
 
 
 def run_instacart_preset(host,
@@ -357,6 +462,8 @@ def run_instacart_preset(host,
 
     # create result table
     create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
 
     # get actual value first
     cur = conn.cursor()
@@ -392,8 +499,21 @@ def run_instacart_preset(host,
         return
     cur.close()
 
+    # get start idx
+    cur = conn.cursor()
+    sql = """SELECT max(idx) FROM {}.results WHERE query = '{}' AND left_dist = '{}' AND
+    right_dist = '{}' and p = {} and q = {} GROUP BY query, left_dist, right_dist, p, q""".format(
+        sample_schema, query_type, 'orders', 'order_products', p, q)
+    cur.execute(sql)
+    result = cur.fetchall()
+    start_idx = 0
+    for row in result:
+        start_idx = row[0] if row[0] is not None else 0
+    start_idx = start_idx + 1
+    cur.close()
+
     # get estimate for each sample pair
-    for i in range(1, num_sample + 1):
+    for i in range(start_idx, num_sample + 1):
         S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format('orders', p, q, i, 1)
         S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(
             'order_products', p, q, i, 2)
@@ -437,12 +557,20 @@ def run_instacart_preset(host,
 
         # record result
         cur = conn.cursor()
-        add_result_sql = """INSERT INTO TABLE {}.results VALUES (
+        add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
         '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
-        )""".format(sample_schema, query_type, i, 'orders', 'order_products',
-                    p, q, actual, estimate)
+        )""".format(sample_schema, temp_table, query_type, i, 'orders',
+                    'order_products', p, q, actual, estimate)
         cur.execute(add_result_sql)
         cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
 
 
 def run_movielens_ours(host,
@@ -458,6 +586,8 @@ def run_movielens_ours(host,
 
     # create result table
     create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
 
     # get p,q,t1_join_col, t2_join_col, t1_agg_col
     sql = """SELECT p, q, t1_join_col, t2_join_col, t1_agg_col FROM {}.meta WHERE
@@ -507,8 +637,21 @@ def run_movielens_ours(host,
         return
     cur.close()
 
+    # get start idx
+    cur = conn.cursor()
+    sql = """SELECT max(idx) FROM {}.results WHERE query = '{}' AND left_dist = '{}' AND
+    right_dist = '{}' GROUP BY query, left_dist, right_dist""".format(
+        sample_schema, query_type, 'ratings', 'movies')
+    cur.execute(sql)
+    result = cur.fetchall()
+    start_idx = 0
+    for row in result:
+        start_idx = row[0] if row[0] is not None else 0
+    start_idx = start_idx + 1
+    cur.close()
+
     # get estimate for each sample pair
-    for i in range(1, num_sample + 1):
+    for i in range(start_idx, num_sample + 1):
         S1_name = "s__{}__{}__{}__{}__{}__{}".format('ratings', t1_join_col,
                                                      t1_agg_col, query_type, i,
                                                      1)
@@ -553,12 +696,20 @@ def run_movielens_ours(host,
 
         # record result
         cur = conn.cursor()
-        add_result_sql = """INSERT INTO TABLE {}.results VALUES (
+        add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
         '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
-        )""".format(sample_schema, query_type, i, 'ratings', 'movies', p, q,
-                    actual, estimate)
+        )""".format(sample_schema, temp_table, query_type, i, 'ratings',
+                    'movies', p, q, actual, estimate)
         cur.execute(add_result_sql)
         cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
 
 
 def run_movielens_preset(host,
@@ -576,6 +727,8 @@ def run_movielens_preset(host,
 
     # create result table
     create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
 
     # get actual value first
     cur = conn.cursor()
@@ -611,8 +764,21 @@ def run_movielens_preset(host,
         return
     cur.close()
 
+    # get start idx
+    cur = conn.cursor()
+    sql = """SELECT max(idx) FROM {}.results WHERE query = '{}' AND left_dist = '{}' AND
+    right_dist = '{}' and p = {} and q = {} GROUP BY query, left_dist, right_dist, p, q""".format(
+        sample_schema, query_type, 'ratings', 'movies', p, q)
+    cur.execute(sql)
+    result = cur.fetchall()
+    start_idx = 0
+    for row in result:
+        start_idx = row[0] if row[0] is not None else 0
+    start_idx = start_idx + 1
+    cur.close()
+
     # get estimate for each sample pair
-    for i in range(1, num_sample + 1):
+    for i in range(start_idx, num_sample + 1):
         S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format('movies', p, q, i, 1)
         S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format('ratings', p, q, i, 2)
         S1_name = S1_name.replace('.', '_')
@@ -656,12 +822,20 @@ def run_movielens_preset(host,
 
         # record result
         cur = conn.cursor()
-        add_result_sql = """INSERT INTO TABLE {}.results VALUES (
+        add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
         '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
-        )""".format(sample_schema, query_type, i, 'ratings', 'movies', p, q,
-                    actual, estimate)
+        )""".format(sample_schema, temp_table, query_type, i, 'ratings',
+                    'movies', p, q, actual, estimate)
         cur.execute(add_result_sql)
         cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
 
 
 def run_tpch_ours(host,
@@ -677,6 +851,8 @@ def run_tpch_ours(host,
 
     # create result table
     create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
 
     # get p,q,t1_join_col, t2_join_col, t1_agg_col
     sql = """SELECT p, q, t1_join_col, t2_join_col, t1_agg_col FROM {}.meta WHERE
@@ -728,8 +904,21 @@ def run_tpch_ours(host,
         return
     cur.close()
 
+    # get start idx
+    cur = conn.cursor()
+    sql = """SELECT max(idx) FROM {}.results WHERE query = '{}' AND left_dist = '{}' AND
+    right_dist = '{}' GROUP BY query, left_dist, right_dist""".format(
+        sample_schema, query_type, 'lineitem', 'orders')
+    cur.execute(sql)
+    result = cur.fetchall()
+    start_idx = 0
+    for row in result:
+        start_idx = row[0] if row[0] is not None else 0
+    start_idx = start_idx + 1
+    cur.close()
+
     # get estimate for each sample pair
-    for i in range(1, num_sample + 1):
+    for i in range(start_idx, num_sample + 1):
         S1_name = "s__{}__{}__{}__{}__{}__{}".format('lineitem', t1_join_col,
                                                      t1_agg_col, query_type, i,
                                                      1)
@@ -774,12 +963,20 @@ def run_tpch_ours(host,
 
         # record result
         cur = conn.cursor()
-        add_result_sql = """INSERT INTO TABLE {}.results VALUES (
+        add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
         '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
-        )""".format(sample_schema, query_type, i, 'lineitem', 'orders', p, q,
-                    actual, estimate)
+        )""".format(sample_schema, temp_table, query_type, i, 'lineitem',
+                    'orders', p, q, actual, estimate)
         cur.execute(add_result_sql)
         cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
 
 
 def run_tpch_preset(host,
@@ -797,6 +994,8 @@ def run_tpch_preset(host,
 
     # create result table
     create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
 
     # get actual value first
     cur = conn.cursor()
@@ -834,8 +1033,21 @@ def run_tpch_preset(host,
         return
     cur.close()
 
+    # get start idx
+    cur = conn.cursor()
+    sql = """SELECT max(idx) FROM {}.results WHERE query = '{}' AND left_dist = '{}' AND
+    right_dist = '{}' and p = {} and q = {} GROUP BY query, left_dist, right_dist, p, q""".format(
+        sample_schema, query_type, 'lineitem', 'orders', p, q)
+    cur.execute(sql)
+    result = cur.fetchall()
+    start_idx = 0
+    for row in result:
+        start_idx = row[0] if row[0] is not None else 0
+    start_idx = start_idx + 1
+    cur.close()
+
     # get estimate for each sample pair
-    for i in range(1, num_sample + 1):
+    for i in range(start_idx, num_sample + 1):
         S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format('orders', p, q, i, 1)
         S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(
             'lineitem', p, q, i, 2)
@@ -880,9 +1092,17 @@ def run_tpch_preset(host,
 
         # record result
         cur = conn.cursor()
-        add_result_sql = """INSERT INTO TABLE {}.results VALUES (
+        add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
         '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
-        )""".format(sample_schema, query_type, i, 'lineitem', 'orders', p, q,
-                    actual, estimate)
+        )""".format(sample_schema, temp_table, query_type, i, 'lineitem',
+                    'orders', p, q, actual, estimate)
         cur.execute(add_result_sql)
         cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()

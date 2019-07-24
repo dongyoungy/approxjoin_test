@@ -34,14 +34,14 @@ prob.append((0.333, 0.03))
 prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
-num_proc = 16
+num_proc = 32
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 1000
 num_movielens_samples = 1000
 num_tpch_samples = 500
 num_synthetic_samples = 500
-overwrite = True
+overwrite = False
 impala_host = 'cp-2'
 impala_port = 21050
 
@@ -112,7 +112,6 @@ for agg in ['count', 'sum', 'avg']:
         movielens_preset.append(
             (impala_host, impala_port, 'movielens', 'movielens_preset', agg,
              p[0], p[1], num_movielens_samples, False))
-
 # evaluate tpch (ours)
 for agg in ['count', 'sum', 'avg']:
     tpch_ours.append(

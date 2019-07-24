@@ -28,7 +28,7 @@ def callback_success(result):
 num_proc = 16
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
-num_samples = 100
+num_samples = 500
 overwrite = False
 args = []
 results = []
