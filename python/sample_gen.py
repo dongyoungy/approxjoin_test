@@ -1982,8 +1982,8 @@ def create_cent_sample_pair_with_where_from_impala(host,
             v1 = A - (2 * B) + C
             v2 = D
 
-            val1 = val1 + (ratio * e1 * e2 * v1)
-            val2 = val2 + (ratio * e1 * e2 * v2)
+            val1 = val1 + (ratio * v1)
+            val2 = val2 + (ratio * v2)
         else:
             print("Unsupported operation")
             return
@@ -2660,7 +2660,8 @@ def create_cent_stratified_sample_pair_from_impala(host,
     grp_cnt_temp = "grp_temp_" + random_str
 
     # create temp table to store group info
-    sql = "CREATE TABLE IF NOT EXISTS {}.{} (groupid INT, all_sampled INT, p DOUBLE, q DOUBLE)".format(sample_schema, grp_cnt_temp)
+    sql = "CREATE TABLE IF NOT EXISTS {}.{} (groupid INT, all_sampled INT, p DOUBLE, q DOUBLE)".format(
+        sample_schema, grp_cnt_temp)
     cur.execute(sql)
 
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
@@ -2713,7 +2714,8 @@ def create_cent_stratified_sample_pair_from_impala(host,
         # insert group info
         cur.execute("""
         INSERT INTO TABLE {}.{} VALUES ({}, {}, {}, {})
-                    """.format(sample_schema, grp_cnt_temp, group_val, all_sampled, p, q))
+                    """.format(sample_schema, grp_cnt_temp, group_val,
+                               all_sampled, p, q))
         p = 0
 
         if agg_type == 'count':
