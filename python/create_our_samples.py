@@ -25,14 +25,14 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 16
+num_proc = 5
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 1000
 num_movielens_samples = 1000
 num_tpch100g_samples = 500
 num_synthetic_samples = 500
-overwrite = False
+overwrite = True
 dec_args = []
 args = []
 results = []
@@ -73,7 +73,7 @@ args.append((impala_host, impala_port, 'movielens', 'ratings', 'movieid',
              'rating', 'movielens', 'movies', 'movieid', None,
              'movielens_cent_sample', 'avg', num_movielens_samples, overwrite))
 '''
-
+'''
 # samples for tpch100g queries
 args.append(
     (impala_host, impala_port, 'tpch100g_parquet', 'lineitem', 'l_orderkey',
@@ -96,6 +96,7 @@ for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
                          'col1', 'col2', 'synthetic_10m', rightDist, 'col1',
                          None, 'synthetic_10m_cent_sample', agg,
                          num_synthetic_samples, overwrite))
+'''
 
 # dec samples for synthetic
 dists = []
@@ -104,10 +105,11 @@ for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
         dists.append((leftDist, rightDist))
 
 for dist in dists:
-    for agg in ['count', 'sum', 'avg']:
-        dec_args.append((impala_host, impala_port, 'synthetic_10m', dist[0],
-                         'col1', 'col2', 'synthetic_10m', dist[1], 'col1',
-                         None, 'synthetic_10m_dec_sample', agg,
+    #  for agg in ['count', 'sum', 'avg']:
+    for agg in ['avg']:
+        dec_args.append(('cp-4', impala_port, 'synthetic_10m', dist[0], 'col1',
+                         'col2', 'synthetic_10m', dist[1], 'col1', None,
+                         'synthetic_10m_dec_sample', agg,
                          num_synthetic_samples, overwrite))
 
 # create samples

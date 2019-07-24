@@ -513,7 +513,14 @@ def create_table_data_for_where(
         keys = keymap[keys - 1]
 
         # generate data for two value columns
-        val1 = np.random.normal(100, 25, current_batch_size).astype(int)
+        #  val1 = np.random.normal(100, 25, current_batch_size).astype(int)
+        alpha = -1.5
+        minv = 1
+        maxv = 1000
+        rand_keys = np.array(np.random.random(size=current_batch_size))
+        val1 = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+                minv**(alpha + 1))**(1 / (alpha + 1))
+        val1 = [math.floor(k) for k in val1]
         err = np.random.normal(0, 100, current_batch_size).astype(int)
         if rel_type == 'uniform':
             val2 = np.random.randint(0, num_pred_val, current_batch_size)
@@ -545,6 +552,7 @@ def create_table_data_for_where(
         val2 = np.array(val2)
         val3 = np.array(val3)
 
+        val1 = val1_map[val1 - 1]
         val2[val2 < 0] = 0
         val2[val2 > num_pred_val - 1] = num_pred_val - 1
 
