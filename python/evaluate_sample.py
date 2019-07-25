@@ -56,6 +56,113 @@ def create_temp_table(conn, schema):
     return temp_table
 
 
+def test_synthetic_ours(host,
+                        port,
+                        table_schema,
+                        sample_schema,
+                        query_type,
+                        left_dist,
+                        right_dist,
+                        num_sample,
+                        overwrite=False):
+    conn = impaladb.connect(host, port)
+    if overwrite:
+        drop_result_table(conn, sample_schema)
+    # create result table
+    create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema)
+
+    # get p,q,t1_join_col, t2_join_col, t1_agg_col
+    sql = """SELECT p, q, t1_join_col, t2_join_col, t1_agg_col FROM {}.meta WHERE t1_name = '{}'
+    AND t2_name = '{}' AND agg = '{}' ORDER BY ts DESC
+    LIMIT 1""".format(sample_schema, left_dist, right_dist, query_type)
+    cur = conn.cursor()
+    cur.execute(sql)
+    result = cur.fetchall()
+    if cur.rowcount == 0:
+        print("query empty!")
+        return
+
+    t1_join_col = ""
+    t2_join_col = ""
+    t1_agg_col = ""
+
+    for row in result:
+        p = row[0]
+        q = row[1]
+        t1_join_col = row[2]
+        t2_join_col = row[3]
+        t1_agg_col = row[4]
+
+    # get actual value first
+    cur = conn.cursor()
+    if query_type == 'count':  # count
+        actual_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+            table_schema, left_dist, right_dist)
+        cur.execute(actual_sql)
+        result = cur.fetchall()
+        for row in result:
+            actual = row[0] if row[0] is not None else 0
+    elif query_type == 'sum':  # sum
+        actual_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+            table_schema, left_dist, right_dist)
+        cur.execute(actual_sql)
+        result = cur.fetchall()
+        for row in result:
+            actual = row[0] if row[0] is not None else 0
+    elif query_type == 'avg':  # avg
+        actual_sql = """SELECT AVG(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+            table_schema, left_dist, right_dist)
+        cur.execute(actual_sql)
+        result = cur.fetchall()
+        for row in result:
+            actual = row[0] if row[0] is not None else 0
+    else:
+        print("Unsupported query: {}".format(query_type))
+        return
+    cur.close()
+
+    # get estimate for each sample pair
+    for i in range(1, num_sample + 1):
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
+            left_dist, right_dist, t1_join_col, t1_agg_col, query_type, i, 1)
+        S2_name = "s__{}__{}__{}__{}__{}__{}".format(left_dist, right_dist,
+                                                     t2_join_col, query_type,
+                                                     i, 2)
+
+        cur = conn.cursor()
+        if query_type == 'count':  # count
+            estimate_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+                sample_schema, S1_name, S2_name)
+            cur.execute(estimate_sql)
+            result = cur.fetchall()
+            for row in result:
+                estimate = row[0] if row[0] is not None else 0
+            estimate = estimate * (1 / (p * q * q))
+        elif query_type == 'sum':  # sum
+            estimate_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+                sample_schema, S1_name, S2_name)
+            cur.execute(estimate_sql)
+            result = cur.fetchall()
+            for row in result:
+                estimate = row[0] if row[0] is not None else 0
+            estimate = estimate * (1 / (p * q * q))
+        elif query_type == 'avg':  # avg
+            estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.col2) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+                sample_schema, S1_name, S2_name)
+            cur.execute(estimate_sql)
+            result = cur.fetchall()
+            for row in result:
+                estimate_count = row[0] if row[0] is not None else 0
+                estimate_sum = row[1] if row[1] is not None else 0
+            estimate_sum = estimate_sum * (1 / (p * q * q))
+            estimate_count = estimate_count * (1 / (p * q * q))
+            estimate = estimate_sum / estimate_count if estimate_count != 0 else 0
+        cur.close()
+        print((i, actual, estimate))
+
+
 def run_synthetic_ours(host,
                        port,
                        table_schema,
@@ -105,14 +212,14 @@ def run_synthetic_ours(host,
         for row in result:
             actual = row[0] if row[0] is not None else 0
     elif query_type == 'sum':  # sum
-        actual_sql = """SELECT SUM(t1.col1) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+        actual_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
             table_schema, left_dist, right_dist)
         cur.execute(actual_sql)
         result = cur.fetchall()
         for row in result:
             actual = row[0] if row[0] is not None else 0
     elif query_type == 'avg':  # avg
-        actual_sql = """SELECT AVG(t1.col1) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+        actual_sql = """SELECT AVG(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
             table_schema, left_dist, right_dist)
         cur.execute(actual_sql)
         result = cur.fetchall()
@@ -138,11 +245,11 @@ def run_synthetic_ours(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(left_dist, right_dist, t1_join_col,
-                                                     t1_agg_col, query_type, i,
-                                                     1)
-        S2_name = "s__{}__{}__{}__{}__{}__{}".format(left_dist, right_dist, t2_join_col,
-                                                 query_type, i, 2)
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
+            left_dist, right_dist, t1_join_col, t1_agg_col, query_type, i, 1)
+        S2_name = "s__{}__{}__{}__{}__{}__{}".format(left_dist, right_dist,
+                                                     t2_join_col, query_type,
+                                                     i, 2)
 
         cur = conn.cursor()
         if query_type == 'count':  # count
@@ -154,7 +261,7 @@ def run_synthetic_ours(host,
                 estimate = row[0] if row[0] is not None else 0
             estimate = estimate * (1 / (p * q * q))
         elif query_type == 'sum':  # sum
-            estimate_sql = """SELECT SUM(t1.col1) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+            estimate_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
                 sample_schema, S1_name, S2_name)
             cur.execute(estimate_sql)
             result = cur.fetchall()
@@ -162,7 +269,7 @@ def run_synthetic_ours(host,
                 estimate = row[0] if row[0] is not None else 0
             estimate = estimate * (1 / (p * q * q))
         elif query_type == 'avg':  # avg
-            estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.col1) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+            estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.col2) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
                 sample_schema, S1_name, S2_name)
             cur.execute(estimate_sql)
             result = cur.fetchall()
@@ -222,14 +329,14 @@ def run_synthetic_preset(host,
         for row in result:
             actual = row[0] if row[0] is not None else 0
     elif query_type == 'sum':  # sum
-        actual_sql = """SELECT SUM(t1.col1) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+        actual_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
             table_schema, left_dist, right_dist)
         cur.execute(actual_sql)
         result = cur.fetchall()
         for row in result:
             actual = row[0] if row[0] is not None else 0
     elif query_type == 'avg':  # avg
-        actual_sql = """SELECT AVG(t1.col1) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+        actual_sql = """SELECT AVG(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
             table_schema, left_dist, right_dist)
         cur.execute(actual_sql)
         result = cur.fetchall()
@@ -271,7 +378,7 @@ def run_synthetic_preset(host,
                 estimate = row[0] if row[0] is not None else 0
             estimate = estimate * (1 / (p * q * q))
         elif query_type == 'sum':  # sum
-            estimate_sql = """SELECT SUM(t1.col1) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+            estimate_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
                 sample_schema, S1_name, S2_name)
             cur.execute(estimate_sql)
             result = cur.fetchall()
@@ -279,7 +386,7 @@ def run_synthetic_preset(host,
                 estimate = row[0] if row[0] is not None else 0
             estimate = estimate * (1 / (p * q * q))
         elif query_type == 'avg':  # avg
-            estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.col1) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
+            estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.col2) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1""".format(
                 sample_schema, S1_name, S2_name)
             cur.execute(estimate_sql)
             result = cur.fetchall()

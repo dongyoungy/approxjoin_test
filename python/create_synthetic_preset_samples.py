@@ -29,7 +29,7 @@ num_proc = 32
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_samples = 500
-overwrite = False
+overwrite = True
 args = []
 results = []
 
@@ -79,15 +79,15 @@ for p in prob:
     args.append((impala_host, impala_port, T1_schema, 'powerlaw_1',
                  T1_join_col, T2_schema, 'powerlaw_2', T2_join_col,
                  target_schema, p[0], p[1], num_samples, overwrite))
-    args.append((impala_host, impala_port, T1_schema, 'uniform_1', T1_join_col,
-                 T2_schema, 'uniform_max_var_2', T2_join_col, target_schema,
-                 p[0], p[1], num_samples, overwrite))
-    args.append((impala_host, impala_port, T1_schema, 'normal_1', T1_join_col,
-                 T2_schema, 'normal_max_var_2', T2_join_col, target_schema,
-                 p[0], p[1], num_samples, overwrite))
-    args.append((impala_host, impala_port, T1_schema, 'powerlaw_1',
-                 T1_join_col, T2_schema, 'powerlaw_max_var_2', T2_join_col,
-                 target_schema, p[0], p[1], num_samples, overwrite))
+    #  args.append((impala_host, impala_port, T1_schema, 'uniform_1', T1_join_col,
+                 #  T2_schema, 'uniform_max_var_2', T2_join_col, target_schema,
+                 #  p[0], p[1], num_samples, overwrite))
+    #  args.append((impala_host, impala_port, T1_schema, 'normal_1', T1_join_col,
+                 #  T2_schema, 'normal_max_var_2', T2_join_col, target_schema,
+                 #  p[0], p[1], num_samples, overwrite))
+    #  args.append((impala_host, impala_port, T1_schema, 'powerlaw_1',
+                 #  T1_join_col, T2_schema, 'powerlaw_max_var_2', T2_join_col,
+                 #  target_schema, p[0], p[1], num_samples, overwrite))
     args.append((impala_host, impala_port, T1_schema, 'uniform_uniform_1',
                  T1_join_col, T2_schema, 'uniform_2', T2_join_col,
                  target_schema, p[0], p[1], num_samples, overwrite))

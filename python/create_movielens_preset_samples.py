@@ -47,14 +47,14 @@ T1_join_col = 'movieId'
 T2_schema = 'movielens'
 T2_table = 'ratings'
 T2_join_col = 'movieId'
-target_schema = 'movielens_preset'
-impala_host = 'cp-2'
+target_schema = 'movielens_preset_new'
+impala_host = 'cp-6'
 impala_port = 21050
 
 for p in prob:
-    args.append(
-        (impala_host, impala_port, T1_schema, T1_table, T1_join_col, T2_schema, T2_table,
-         T2_join_col, target_schema, p[0], p[1], num_samples, overwrite))
+    args.append((impala_host, impala_port, T1_schema, T1_table, T1_join_col,
+                 T2_schema, T2_table, T2_join_col, target_schema, p[0], p[1],
+                 num_samples, overwrite))
 
 for arg in args:
     results.append(
