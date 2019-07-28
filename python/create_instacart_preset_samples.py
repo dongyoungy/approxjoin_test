@@ -28,7 +28,7 @@ def callback_success(result):
 num_proc = 16
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
-num_samples = 1000
+num_samples = 500
 overwrite = False
 args = []
 results = []
@@ -47,8 +47,8 @@ T1_join_col = 'order_id'
 T2_schema = 'instacart'
 T2_table = 'order_products'
 T2_join_col = 'order_id'
-target_schema = 'instacart_preset_new'
-impala_host = 'cp-7'
+target_schema = 'instacart_preset2'
+impala_host = 'cp-4'
 impala_port = 21050
 
 for p in prob:

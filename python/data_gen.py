@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 import hashlib
+import uuid
 
 import impala.dbapi as impaladb
 import numpy as np
@@ -214,8 +215,10 @@ def create_table_data(num_rows,
         os.makedirs(raw_data_path)
 
     # seed the rng
-    hash_val = int(hashlib.sha1(type.encode()).hexdigest(), 16) % (10**8)
-    np.random.seed(int(time.time()) + hash_val + n)
+    hash_val = int(
+        hashlib.sha1(str(uuid.uuid1().bytes).encode()).hexdigest(), 16) % (10**
+                                                                           8)
+    np.random.seed(int(time.time()) + hash_val)
 
     table_name = "t_{0}n_{1}k_{2}_{3}".format(num_rows, num_keys, type, n)
     data_file = raw_data_path + '/' + "{0}.csv".format(table_name)

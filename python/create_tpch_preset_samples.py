@@ -47,8 +47,8 @@ T1_join_col = 'o_orderkey'
 T2_schema = 'tpch100g_parquet'
 T2_table = 'lineitem'
 T2_join_col = 'l_orderkey'
-target_schema = 'tpch100g_preset_new'
-impala_host = 'cp-2'
+target_schema = 'tpch100g_preset2'
+impala_host = 'cp-4'
 impala_port = 21050
 
 for p in prob:

@@ -25,6 +25,19 @@ impala_port = 21050
 fetch_size = 100000
 e1 = 0.01
 e2 = 0.01
+m = 1540483477
+modval = 2**32
+
+
+def get_existing_tables(conn, schema):
+    cur = conn.cursor()
+    cur.execute("SHOW TABLES IN {}".format(schema))
+    table_list = []
+    results = cur.fetchall()
+    for row in results:
+        table_list.append(row[0])
+    cur.close()
+    return table_list
 
 
 def test1(num_rows, num_keys, leftDist, rightDist, type):
@@ -1087,6 +1100,86 @@ def create_sample_pair(T1_rows,
     return True
 
 
+def create_preset_sample_pair_from_impala_test(host,
+                                               port,
+                                               T1_schema,
+                                               T1_table,
+                                               T1_join_col,
+                                               T2_schema,
+                                               T2_table,
+                                               T2_join_col,
+                                               target_schema,
+                                               p,
+                                               q,
+                                               num_sample,
+                                               overwrite=False):
+    # seed the rng
+    hash_val = int(
+        hashlib.sha1(str(uuid.uuid1().bytes).encode()).hexdigest(), 16) % (10**
+                                                                           8)
+    np.random.seed(int(time.time()) + hash_val)
+    conn = impaladb.connect(host, port)
+    cur = conn.cursor()
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(target_schema))
+
+    tables = get_existing_tables(conn, target_schema)
+    m = 1540483477
+    modval = 2**32
+
+    for i in range(1, num_sample + 1):
+        hash_num = np.random.randint(1000 * 1000)
+        hash_num2 = np.random.randint(1000 * 1000)
+        #  hash_num2 = 2**32
+        S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            T1_table, T2_table, p, q, i, 1)
+        S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            T1_table, T2_table, p, q, i, 2)
+        S1_name = S1_name.replace('.', '_')
+        S2_name = S2_name.replace('.', '_')
+
+        if overwrite:
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+                target_schema, S1_name))
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+                target_schema, S2_name))
+            conn.commit()
+        else:
+            if S1_name in tables and S2_name in tables:
+                continue
+
+        create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S1_name, T1_schema, T1_table, p, q,
+                   hash_num + i, T1_join_col, hash_num2, m, modval)
+        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S2_name, T2_schema, T2_table, p, q,
+                   hash_num + i, T2_join_col, hash_num2, m, modval)
+
+        #  create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 2) <= {5}
+        #  """.format(target_schema, S2_name, T2_schema, T2_table, p, q,
+        #  hash_num + i, T2_join_col)
+
+        cur.execute(create_S1_sql)
+        cur.execute(create_S2_sql)
+        cur.execute("COMPUTE STATS {}.{}".format(target_schema, S1_name))
+        cur.execute("COMPUTE STATS {}.{}".format(target_schema, S2_name))
+        #  cur.execute("SELECT COUNT(distinct col1) from {}.{}".format(
+        #  target_schema, S1_name))
+        #  res = cur.fetchone()
+        #  print(res[0])
+
+
 def create_preset_sample_pair_from_impala(host,
                                           port,
                                           T1_schema,
@@ -1108,9 +1201,14 @@ def create_preset_sample_pair_from_impala(host,
     conn = impaladb.connect(host, port)
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(target_schema))
-    hash_num = np.random.randint(1000 * 1000 * 1000)
+
+    tables = get_existing_tables(conn, target_schema)
+    m = 1540483477
+    modval = 2**32
 
     for i in range(1, num_sample + 1):
+        hash_num = np.random.randint(1000 * 1000)
+        hash_num2 = np.random.randint(1000 * 1000)
         S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
             T1_table, T2_table, p, q, i, 1)
         S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
@@ -1124,27 +1222,44 @@ def create_preset_sample_pair_from_impala(host,
             cur.execute("DROP TABLE IF EXISTS {}.{}".format(
                 target_schema, S2_name))
             conn.commit()
+        else:
+            if S1_name in tables and S2_name in tables:
+                continue
 
         create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
         """.format(target_schema, S1_name, T1_schema, T1_table, p, q,
-                   hash_num + i, T1_join_col)
-
+                   hash_num + i, T1_join_col, hash_num2, m, modval)
         create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
         """.format(target_schema, S2_name, T2_schema, T2_table, p, q,
-                   hash_num + i, T2_join_col)
+                   hash_num + i, T2_join_col, hash_num2, m, modval)
+        #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 1) <= {5}
+        #  """.format(target_schema, S1_name, T1_schema, T1_table, p, q,
+        #  hash_num + i, T1_join_col)
+        #
+        #  create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 2) <= {5}
+        #  """.format(target_schema, S2_name, T2_schema, T2_table, p, q,
+        #  hash_num + i, T2_join_col)
 
         cur.execute(create_S1_sql)
         cur.execute(create_S2_sql)
-        cur.execute("COMPUTE STATS {}.{}".format(target_schema, S1_name))
-        cur.execute("COMPUTE STATS {}.{}".format(target_schema, S2_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(target_schema, S1_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(target_schema, S2_name))
 
 
 def create_dec_sample_pair_from_impala(host,
@@ -1160,7 +1275,10 @@ def create_dec_sample_pair_from_impala(host,
                                        sample_schema,
                                        agg_type,
                                        num_sample,
-                                       overwrite=False):
+                                       overwrite=False,
+                                       print_time=False):
+
+    t1 = datetime.datetime.now()
     # seed the rng
     hash_val = int(
         hashlib.sha1(str(uuid.uuid1().bytes).encode()).hexdigest(), 16) % (10**
@@ -1249,6 +1367,7 @@ def create_dec_sample_pair_from_impala(host,
         results = cur.fetchall()
         for row in results:
             b_star = int(row[0] * 0.75)
+        t2 = datetime.datetime.now()
         #  sum1 = e1 * e2 * (a_star^2 * n_b^2 + a_star^2 * n_b + a_star * n_b^2 + a_star * n_b);
         #  sum2 = a_star * n_b;
         #  sum1 = e1 * e2 * (a_star**2 * n_b**2 + a_star**2 * n_b +
@@ -1532,11 +1651,17 @@ def create_dec_sample_pair_from_impala(host,
 
     q1 = e1 / p
     q2 = e2 / p
-    hash_num = np.random.randint(1000 * 1000 * 1000)
+    t3 = datetime.datetime.now()
+    #  hash_num = np.random.randint(1000 * 1000 * 1000)
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
 
+    tables = get_existing_tables(conn, sample_schema)
+    m = 1540483477
+    modval = 2**32
     for i in range(1, num_sample + 1):
+        hash_num = np.random.randint(1000 * 1000)
+        hash_num2 = np.random.randint(1000 * 1000)
         S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
             T1_table, T2_table, T1_join_col, T1_agg_col, agg_type, i, 1)
         S2_name = "s__{}__{}__{}__{}__{}__{}".format(T1_table, T2_table,
@@ -1549,29 +1674,47 @@ def create_dec_sample_pair_from_impala(host,
             cur.execute("DROP TABLE IF EXISTS {}.{}".format(
                 sample_schema, S2_name))
             conn.commit()
+        else:
+            if S1_name in tables and S2_name in tables:
+                continue
 
         create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
-        FROM {2}.{3} {8}
-        ) tmp
-        WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
-        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
-                   hash_num + i, T1_join_col, T1_where)
-
-        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
-        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
-                   hash_num + i, T2_join_col)
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S1_name, T1_schema, T1_table, p, q1,
+                   hash_num + i, T1_join_col, hash_num2, m, modval)
+        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S2_name, T2_schema, T2_table, p, q2,
+                   hash_num + i, T2_join_col, hash_num2, m, modval)
+
+        #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+        #  FROM {2}.{3} {8}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+        #  """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
+        #  hash_num + i, T1_join_col, T1_where)
+        #
+        #  create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+        #  """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
+        #  hash_num + i, T2_join_col)
 
         cur.execute(create_S1_sql)
         cur.execute(create_S2_sql)
         conn.commit()
 
-        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
-        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
 
     # add metadata
     create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
@@ -1586,6 +1729,15 @@ def create_dec_sample_pair_from_impala(host,
         T1_agg_col, 'NULL', p, q1)
     cur.execute(insert_meta)
     cur.close()
+    t4 = datetime.datetime.now()
+    if print_time:
+        print("start datetime: {}".format(str(t1)))
+        print("collecting frequency info: {} s".format(
+            (t2 - t1).total_seconds()))
+        print("calculating p and q: {} s".format((t3 - t2).total_seconds()))
+        print("creating samples: {} s".format((t4 - t3).total_seconds()))
+        print("total: {} s".format((t4 - t1).total_seconds()))
+        print("end datetime: {}".format(str(t4)))
 
 
 def create_cent_sample_pair_from_impala(host,
@@ -1601,7 +1753,9 @@ def create_cent_sample_pair_from_impala(host,
                                         sample_schema,
                                         agg_type,
                                         num_sample,
-                                        overwrite=False):
+                                        overwrite=False,
+                                        print_time=False):
+    t1 = datetime.datetime.now()
     # seed the rng
     hash_val = int(
         hashlib.sha1(str(uuid.uuid1().bytes).encode()).hexdigest(), 16) % (10**
@@ -1687,6 +1841,7 @@ def create_cent_sample_pair_from_impala(host,
             b_v[col1 - 1, 0] = cnt
 
     b_v[:, 1] = b_v[:, 0]**2
+    t2 = datetime.datetime.now()
 
     if agg_type == 'count':
         sum1 = sum(a_v[:, 1] * b_v[:, 1] - a_v[:, 1] * b_v[:, 0] -
@@ -1754,11 +1909,16 @@ def create_cent_sample_pair_from_impala(host,
 
     q1 = e1 / p
     q2 = e2 / p
-    hash_num = np.random.randint(1000 * 1000 * 1000)
+    t3 = datetime.datetime.now()
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
 
+    tables = get_existing_tables(conn, sample_schema)
+    m = 1540483477
+    modval = 2**32
     for i in range(1, num_sample + 1):
+        hash_num = np.random.randint(1000 * 1000)
+        hash_num2 = np.random.randint(1000 * 1000)
         S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
             T1_table, T2_table, T1_join_col, T1_agg_col, agg_type, i, 1)
         S2_name = "s__{}__{}__{}__{}__{}__{}".format(T1_table, T2_table,
@@ -1771,29 +1931,46 @@ def create_cent_sample_pair_from_impala(host,
             cur.execute("DROP TABLE IF EXISTS {}.{}".format(
                 sample_schema, S2_name))
             conn.commit()
+        else:
+            if S1_name in tables and S2_name in tables:
+                continue
 
         create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
-        FROM {2}.{3} {8}
-        ) tmp
-        WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
-        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
-                   hash_num + i, T1_join_col, T1_where)
-
-        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
-        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
-                   hash_num + i, T2_join_col)
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S1_name, T1_schema, T1_table, p, q1,
+                   hash_num + i, T1_join_col, hash_num2, m, modval)
+        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S2_name, T2_schema, T2_table, p, q2,
+                   hash_num + i, T2_join_col, hash_num2, m, modval)
 
+        #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 1) <= {5}
+        #  """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
+                   #  hash_num + i, T1_join_col)
+#
+        #  create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 2) <= {5}
+        #  """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
+                   #  hash_num + i, T2_join_col)
         cur.execute(create_S1_sql)
         cur.execute(create_S2_sql)
         conn.commit()
 
-        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
-        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
 
     # add metadata
     create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
@@ -1808,6 +1985,15 @@ def create_cent_sample_pair_from_impala(host,
         T1_agg_col, 'NULL', p, q1)
     cur.execute(insert_meta)
     cur.close()
+    t4 = datetime.datetime.now()
+    if print_time:
+        print("start datetime: {}".format(str(t1)))
+        print("collecting frequency info: {} s".format(
+            (t2 - t1).total_seconds()))
+        print("calculating p and q: {} s".format((t3 - t2).total_seconds()))
+        print("creating samples: {} s".format((t4 - t3).total_seconds()))
+        print("total: {} s".format((t4 - t1).total_seconds()))
+        print("end datetime: {}".format(str(t4)))
 
 
 def create_cent_sample_pair_with_where_from_impala(host,
@@ -1874,12 +2060,17 @@ def create_cent_sample_pair_with_where_from_impala(host,
             b_v[col1 - 1, 0] = cnt
 
     b_v[:, 1] = b_v[:, 0]**2
+    increment = 1
 
     keys = np.arange(1, num_keys + 1)
     if cond_type == 'eq':
         cond_op = '='
+        if T1_table != 'instacart':
+            increment = 5
     elif cond_type == 'geq':
         cond_op = '>='
+        if T1_table != 'instacart':
+            increment = 10
     else:
         print("Unsupported Cond Op: {}".format(cond_type))
         return
@@ -1903,7 +2094,7 @@ def create_cent_sample_pair_with_where_from_impala(host,
         cur.close()
 
     cur = conn.cursor()
-    for cond_val in range(start_val, end_val + 1):
+    for cond_val in range(start_val, end_val + 1, increment):
         a_v = np.zeros((num_keys, 2))
         mu_v = np.zeros((num_keys, 2))
         var_v = np.zeros((num_keys, 2))
@@ -2009,11 +2200,15 @@ def create_cent_sample_pair_with_where_from_impala(host,
 
     q1 = e1 / p
     q2 = e2 / p
-    hash_num = np.random.randint(1000 * 1000 * 1000)
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
+    tables = get_existing_tables(conn, sample_schema)
 
+    m = 1540483477
+    modval = 2**32
     for i in range(1, num_sample + 1):
+        hash_num = np.random.randint(1000 * 1000)
+        hash_num2 = np.random.randint(1000 * 1000)
         S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}__{}".format(
             T1_table, T2_table, T1_join_col, T1_agg_col, agg_type, cond_type,
             where_dist_type, i, 1)
@@ -2027,29 +2222,47 @@ def create_cent_sample_pair_with_where_from_impala(host,
             cur.execute("DROP TABLE IF EXISTS {}.{}".format(
                 sample_schema, S2_name))
             conn.commit()
+        else:
+            if S1_name in tables and S2_name in tables:
+                continue
 
         create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * 1000000 and qval <= {5}
-        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
-                   hash_num + i, T1_join_col)
-
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S1_name, T1_schema, T1_table, p, q1,
+                   hash_num + i, T1_join_col, hash_num2, m, modval)
         create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * 1000000 and qval <= {5}
-        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
-                   hash_num + i, T2_join_col)
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S2_name, T2_schema, T2_table, p, q2,
+                   hash_num + i, T2_join_col, hash_num2, m, modval)
 
+        #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and qval <= {5}
+        #  """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
+                   #  hash_num + i, T1_join_col)
+#
+        #  create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and qval <= {5}
+        #  """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
+                   #  hash_num + i, T2_join_col)
+#
         cur.execute(create_S1_sql)
         cur.execute(create_S2_sql)
         conn.commit()
 
-        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
-        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
 
     # add metadata
     create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
@@ -2250,11 +2463,15 @@ def create_cent_sample_pair_for_all_from_impala(host,
 
     q1 = e1 / p
     q2 = e2 / p
-    hash_num = np.random.randint(1000 * 1000 * 1000)
+    #  hash_num = np.random.randint(1000 * 1000 * 1000)
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
 
+    m = 1540483477
+    modval = 2**32
     for i in range(1, num_sample + 1):
+        hash_num = np.random.randint(1000 * 1000)
+        hash_num2 = np.random.randint(1000 * 1000)
         S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
             T1_table, T2_table, T1_join_col, T1_agg_col, 'all', i, 1)
         S2_name = "s__{}__{}__{}__{}__{}__{}".format(T1_table, T2_table,
@@ -2268,20 +2485,36 @@ def create_cent_sample_pair_for_all_from_impala(host,
             conn.commit()
 
         create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
-        FROM {2}.{3} {8}
-        ) tmp
-        WHERE pval <= {4} * 1000000 and qval <= {5}
-        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
-                   hash_num + i, T1_join_col, T1_where)
-
-        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * 1000000 and qval <= {5}
-        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
-                   hash_num + i, T2_join_col)
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S1_name, T1_schema, T1_table, p, q1,
+                   hash_num + i, T1_join_col, hash_num2, m, modval)
+        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(target_schema, S2_name, T2_schema, T2_table, p, q2,
+                   hash_num + i, T2_join_col, hash_num2, m, modval)
+
+
+        #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+        #  FROM {2}.{3} {8}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+        #  """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
+                   #  hash_num + i, T1_join_col, T1_where)
+#
+        #  create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+        #  """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
+                   #  hash_num + i, T2_join_col)
 
         cur.execute(create_S1_sql)
         cur.execute(create_S2_sql)
@@ -2657,16 +2890,17 @@ def create_cent_stratified_sample_pair_from_impala(host,
 
     cur = conn.cursor()
     group_info = []
+    group_info_map = {}
     grp_cnt_table = "grp__{}__{}__{}".format(T1_table, T1_group_col, K)
     random_str = hashlib.md5(str(uuid.uuid1().bytes).encode()).hexdigest()[:32]
     grp_cnt_temp = "grp_temp_" + random_str
 
     # create temp table to store group info
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
     sql = "CREATE TABLE IF NOT EXISTS {}.{} (groupid INT, all_sampled INT, p DOUBLE, q DOUBLE)".format(
         sample_schema, grp_cnt_temp)
     cur.execute(sql)
 
-    cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
     for group_val in range(start_val, end_val + 1):
         a_v = np.zeros((num_keys, 2))
         mu_v = np.zeros((num_keys, 2))
@@ -2706,9 +2940,11 @@ def create_cent_stratified_sample_pair_from_impala(host,
         if grp_cnt <= K:
             is_sample_all = True
             group_info.append((group_val, True))
+            group_info_map[group_val] = True
         else:
             is_sample_all = False
             group_info.append((group_val, False))
+            group_info_map[group_val] = False
 
         p = 0
 
@@ -2817,12 +3053,11 @@ def create_cent_stratified_sample_pair_from_impala(host,
     hash_num = np.random.randint(1000 * 1000 * 1000)
 
     for i in range(1, num_sample + 1):
-        S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}".format(
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}__{}".format(
             T1_table, T2_table, T1_join_col, T1_agg_col, T1_group_col,
-            agg_type, i, 1)
-        S2_name = "s__{}__{}__{}__{}__{}__{}".format(T1_table, T2_table,
-                                                     T2_join_col, agg_type, i,
-                                                     2)
+            agg_type, K, i, 1)
+        S2_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
+            T1_table, T2_table, T2_join_col, agg_type, K, i, 2)
 
         if overwrite:
             cur.execute("DROP TABLE IF EXISTS {}.{}".format(
@@ -2831,23 +3066,45 @@ def create_cent_stratified_sample_pair_from_impala(host,
                 sample_schema, S2_name))
             conn.commit()
 
-        create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
-        FROM {2}.{3}
-        ) tmp
-        WHERE pval <= {4} * 1000000 and qval <= {5}
-        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
-                   hash_num + i, T1_join_col)
+        # create tables first for S1
+        create_S1 = """
+        CREATE TABLE IF NOT EXISTS {}.{} LIKE {}.{} STORED AS PARQUET
+        """.format(sample_schema, S1_name, T1_schema, T1_table)
+        cur.execute(create_S1)
+        # add pval, qval columns
+        add_column_S1 = """
+        ALTER TABLE {}.{} ADD COLUMNS (qval DOUBLE, pval BIGINT)
+        """.format(sample_schema, S1_name)
+        cur.execute(add_column_S1)
 
+        # sample data per group
+        for group_val in range(start_val, end_val + 1):
+            all_sample = group_info_map[group_val]
+            if all_sample:
+                sql = """
+                    INSERT INTO TABLE {0}.{1} SELECT *, 1 as qval, 0 as pval
+                    FROM {2}.{3} WHERE {4} = {5}
+                """.format(sample_schema, S1_name, T1_schema, T1_table,
+                           T1_group_col, group_val)
+            else:
+                sql = """INSERT INTO TABLE {0}.{1} SELECT * FROM (
+                SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+                FROM {2}.{3} WHERE {8} = {9}
+                ) tmp
+                WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+                """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
+                           hash_num + i, T1_join_col, T1_group_col, group_val)
+            cur.execute(sql)
+
+        # sample S2 as usual
         create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000000) as pval
+        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * 1000000 and qval <= {5}
+        WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
         """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
                    hash_num + i, T2_join_col)
 
-        cur.execute(create_S1_sql)
         cur.execute(create_S2_sql)
         conn.commit()
 
@@ -2856,17 +3113,23 @@ def create_cent_stratified_sample_pair_from_impala(host,
 
     # add metadata
     create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
-    t1_join_col STRING, t2_join_col STRING, t1_agg_col STRING, t1_where_col STRING,
-    cond_type STRING, where_dist STRING,
+    t1_join_col STRING, t2_join_col STRING, t1_agg_col STRING, t1_group_col STRING,
     p DOUBLE, q DOUBLE, ts TIMESTAMP ) STORED AS PARQUET
     """.format(sample_schema)
     cur.execute(create_metatable_sql)
 
+    create_grp_cnt_sql = """
+        CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM {0}.{2}
+    """.format(sample_schema, grp_cnt_table, grp_cnt_temp)
+    cur.execute(create_grp_cnt_sql)
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema,
+                                                    grp_cnt_temp))
+
     ts = int(time.time())
     insert_meta = """INSERT INTO TABLE {}.meta VALUES
-    ('{}','{}','{}','{}','{}','{}','{}','{}','{}',{},{},now())""".format(
+    ('{}','{}','{}','{}','{}','{}','{}',{},{},now())""".format(
         sample_schema, T1_table, T2_table, agg_type, T1_join_col, T2_join_col,
-        T1_agg_col, T1_where_col, cond_type, where_dist_type, p, q1)
+        T1_agg_col, T1_group_col, p, q1)
     cur.execute(insert_meta)
     conn.commit()
     cur.close()

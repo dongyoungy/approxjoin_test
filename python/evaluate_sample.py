@@ -16,10 +16,31 @@ def drop_result_table(conn, schema):
     conn.commit()
 
 
+def drop_where_result_table(conn, schema):
+    cur = conn.cursor()
+    drop_result_table_sql = """DROP TABLE IF EXISTS {}.where_results""".format(
+        schema)
+    cur.execute(drop_result_table_sql)
+    cur.close()
+    conn.commit()
+
+
 def create_result_table(conn, schema):
     cur = conn.cursor()
     create_result_table_sql = """CREATE TABLE IF NOT EXISTS {}.results (query STRING, idx INT, left_dist STRING,
     right_dist STRING, p DOUBLE, q DOUBLE, actual DOUBLE, estimate DOUBLE, ts TIMESTAMP) STORED AS PARQUET
+    """.format(schema)
+    cur.execute(create_result_table_sql)
+    conn.commit()
+    cur.close()
+
+
+def create_where_result_table(conn, schema):
+    cur = conn.cursor()
+    create_result_table_sql = """CREATE TABLE IF NOT EXISTS {}.where_results
+    (query STRING, idx INT, left_dist STRING,
+    right_dist STRING, cond_type STRING, cond_val INT, where_dist STRING,
+    p DOUBLE, q DOUBLE, actual DOUBLE, estimate DOUBLE, ts TIMESTAMP) STORED AS PARQUET
     """.format(schema)
     cur.execute(create_result_table_sql)
     conn.commit()
@@ -38,7 +59,25 @@ def clean_temp_tables(host, port, schema):
         conn.cursor().execute(sql)
 
 
-def create_temp_table(conn, schema):
+#  def create_temp_table(conn, schema):
+#  random_str = hashlib.md5(str(uuid.uuid1().bytes).encode()).hexdigest()[:32]
+#  temp_table = "result_temp_" + random_str
+#  cur = conn.cursor()
+#  cur.execute("DROP TABLE IF EXISTS {}.{}".format(schema, temp_table))
+#  conn.commit()
+#  cur.close()
+#
+#  cur = conn.cursor()
+#  create_temp_table_sql = """CREATE TABLE IF NOT EXISTS {}.{} (query STRING, idx INT, left_dist STRING,
+#  right_dist STRING, p DOUBLE, q DOUBLE, actual DOUBLE, estimate DOUBLE, ts TIMESTAMP) STORED AS PARQUET
+#  """.format(schema, temp_table)
+#  cur.execute(create_temp_table_sql)
+#  conn.commit()
+#  cur.close()
+#  return temp_table
+
+
+def create_temp_table(conn, schema, orig_table=None):
     random_str = hashlib.md5(str(uuid.uuid1().bytes).encode()).hexdigest()[:32]
     temp_table = "result_temp_" + random_str
     cur = conn.cursor()
@@ -47,9 +86,13 @@ def create_temp_table(conn, schema):
     cur.close()
 
     cur = conn.cursor()
-    create_temp_table_sql = """CREATE TABLE IF NOT EXISTS {}.{} (query STRING, idx INT, left_dist STRING,
-    right_dist STRING, p DOUBLE, q DOUBLE, actual DOUBLE, estimate DOUBLE, ts TIMESTAMP) STORED AS PARQUET
-    """.format(schema, temp_table)
+    if orig_table is not None:
+        create_temp_table_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} LIKE {0}.{2} STORED AS PARQUET
+        """.format(schema, temp_table, orig_table)
+    else:
+        create_temp_table_sql = """CREATE TABLE IF NOT EXISTS {}.{} (query STRING, idx INT, left_dist STRING,
+        right_dist STRING, p DOUBLE, q DOUBLE, actual DOUBLE, estimate DOUBLE, ts TIMESTAMP) STORED AS PARQUET
+        """.format(schema, temp_table)
     cur.execute(create_temp_table_sql)
     conn.commit()
     cur.close()
@@ -202,6 +245,8 @@ def run_synthetic_ours(host,
         t2_join_col = row[3]
         t1_agg_col = row[4]
 
+    print((p, q))
+
     # get actual value first
     cur = conn.cursor()
     if query_type == 'count':  # count
@@ -293,6 +338,315 @@ def run_synthetic_ours(host,
     cur = conn.cursor()
     cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
         sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
+
+
+def run_synthetic_ours_with_where(host,
+                                  port,
+                                  table_schema,
+                                  sample_schema,
+                                  query_type,
+                                  left_dist,
+                                  right_dist,
+                                  cond_type,
+                                  where_dist,
+                                  num_sample,
+                                  overwrite=False):
+    conn = impaladb.connect(host, port)
+    if overwrite:
+        drop_where_result_table(conn, sample_schema)
+    # create result table
+    create_where_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema, 'where_results')
+    result_table = 'where_results'
+
+    # get p,q,t1_join_col, t2_join_col, t1_agg_col
+    sql = """SELECT p, q, t1_join_col, t2_join_col, t1_agg_col, t1_where_col FROM {}.meta WHERE t1_name = '{}'
+    AND t2_name = '{}' AND agg = '{}' and cond_type = '{}' and where_dist = '{}' ORDER BY ts DESC
+    LIMIT 1""".format(sample_schema, left_dist, right_dist, query_type,
+                      cond_type, where_dist)
+    cur = conn.cursor()
+    cur.execute(sql)
+    result = cur.fetchall()
+    if cur.rowcount == 0:
+        print("query empty!")
+        return
+
+    t1_join_col = ""
+    t2_join_col = ""
+    t1_agg_col = ""
+
+    for row in result:
+        p = row[0]
+        q = row[1]
+        t1_join_col = row[2]
+        t2_join_col = row[3]
+        t1_agg_col = row[4]
+
+    if cond_type == 'eq':
+        cond_op = '='
+        increment = 5
+    elif cond_type == 'geq':
+        cond_op = '>='
+        increment = 10
+    else:
+        print("Unsupported Cond Op: {}".format(cond_type))
+        return
+    t1_where_col = 't1.col3'
+
+    cur = conn.cursor()
+    cur.execute("SELECT MIN({0}), MAX({0}) FROM {1}.{2} t1".format(
+        t1_where_col, table_schema, left_dist))
+    row = cur.fetchone()
+    start_val = row[0]
+    end_val = row[1]
+
+    for cond_val in range(start_val, end_val + 1, increment):
+        where_str = "WHERE {} {} {}".format(t1_where_col, cond_op, cond_val)
+        # get actual value first
+        cur = conn.cursor()
+        if query_type == 'count':  # count
+            actual_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                table_schema, left_dist, right_dist, where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        elif query_type == 'sum':  # sum
+            actual_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                table_schema, left_dist, right_dist, where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        elif query_type == 'avg':  # avg
+            actual_sql = """SELECT AVG(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                table_schema, left_dist, right_dist, where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        else:
+            print("Unsupported query: {}".format(query_type))
+            return
+        cur.close()
+
+        # get start idx
+        cur = conn.cursor()
+        sql = """SELECT max(idx) FROM {}.{} WHERE query = '{}' AND left_dist = '{}' AND
+        right_dist = '{}' AND cond_type = '{}' AND cond_val = {} AND where_dist = '{}'
+        GROUP BY query, left_dist, right_dist, cond_type, cond_val, where_dist""".format(
+            sample_schema, result_table, query_type, left_dist, right_dist, cond_type,
+            cond_val, where_dist)
+        cur.execute(sql)
+        result = cur.fetchall()
+        start_idx = 0
+        for row in result:
+            start_idx = row[0] if row[0] is not None else 0
+        start_idx = start_idx + 1
+        cur.close()
+
+        # get estimate for each sample pair
+        for i in range(start_idx, num_sample + 1):
+            S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}__{}".format(
+                left_dist, right_dist, t1_join_col, t1_agg_col, query_type,
+                cond_type, where_dist, i, 1)
+            S2_name = "s__{}__{}__{}__{}__{}__{}__{}__{}".format(
+                left_dist, right_dist, t2_join_col, query_type, cond_type,
+                where_dist, i, 2)
+
+            cur = conn.cursor()
+            if query_type == 'count':  # count
+                estimate_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate = row[0] if row[0] is not None else 0
+                estimate = estimate * (1 / (p * q * q))
+            elif query_type == 'sum':  # sum
+                estimate_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate = row[0] if row[0] is not None else 0
+                estimate = estimate * (1 / (p * q * q))
+            elif query_type == 'avg':  # avg
+                estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.col2) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate_count = row[0] if row[0] is not None else 0
+                    estimate_sum = row[1] if row[1] is not None else 0
+                estimate_sum = estimate_sum * (1 / (p * q * q))
+                estimate_count = estimate_count * (1 / (p * q * q))
+                estimate = estimate_sum / estimate_count if estimate_count != 0 else 0
+            cur.close()
+
+            # record result
+            cur = conn.cursor()
+            add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
+            '{}', {}, '{}', '{}', '{}', {}, '{}', {:.3f}, {:.3f}, {}, {}, now()
+            )""".format(sample_schema, temp_table, query_type, i, left_dist,
+                        right_dist, cond_type, cond_val, where_dist, p, q,
+                        actual, estimate)
+            cur.execute(add_result_sql)
+            cur.close()
+
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO TABLE {0}.{2} SELECT * FROM {0}.{1}".format(
+            sample_schema, temp_table, result_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
+
+
+def run_synthetic_preset_with_where(host,
+                                    port,
+                                    table_schema,
+                                    sample_schema,
+                                    query_type,
+                                    left_dist,
+                                    right_dist,
+                                    cond_type,
+                                    p,
+                                    q,
+                                    num_sample,
+                                    overwrite=False):
+    conn = impaladb.connect(host, port)
+    if overwrite:
+        drop_where_result_table(conn, sample_schema)
+
+    # create result table
+    create_where_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema, 'where_results')
+    result_table = 'where_results'
+
+    if cond_type == 'eq':
+        increment = 5
+        cond_op = '='
+    elif cond_type == 'geq':
+        increment = 10
+        cond_op = '>='
+    else:
+        print("Unsupported Cond Op: {}".format(cond_type))
+        return
+    t1_where_col = 't1.col3'
+
+    cur = conn.cursor()
+    cur.execute("SELECT MIN({0}), MAX({0}) FROM {1}.{2} t1".format(
+        t1_where_col, table_schema, left_dist))
+    row = cur.fetchone()
+    start_val = row[0]
+    end_val = row[1]
+
+    for cond_val in range(start_val, end_val + 1, increment):
+        where_str = "WHERE {} {} {}".format(t1_where_col, cond_op, cond_val)
+
+        # get actual value first
+        cur = conn.cursor()
+        if query_type == 'count':  # count
+            actual_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                table_schema, left_dist, right_dist, where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        elif query_type == 'sum':  # sum
+            actual_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                table_schema, left_dist, right_dist, where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        elif query_type == 'avg':  # avg
+            actual_sql = """SELECT AVG(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                table_schema, left_dist, right_dist, where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        else:
+            print("Unsupported query: {}".format(query_type))
+            return
+        cur.close()
+
+        # get start idx
+        cur = conn.cursor()
+        sql = """SELECT max(idx) FROM {}.{} WHERE query = '{}' AND left_dist = '{}' AND
+        right_dist = '{}' and p = {} and q = {} and
+        cond_type = '{}' AND cond_val = {}
+        GROUP BY query, left_dist, right_dist, p, q, cond_type, cond_val""".format(
+            sample_schema, result_table, query_type, left_dist, right_dist, p,
+            q, cond_type, cond_val)
+        cur.execute(sql)
+        result = cur.fetchall()
+        start_idx = 0
+        for row in result:
+            start_idx = row[0] if row[0] is not None else 0
+        start_idx = start_idx + 1
+        cur.close()
+
+        # get estimate for each sample pair
+        for i in range(start_idx, num_sample + 1):
+            S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+                left_dist, right_dist, p, q, i, 1)
+            S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+                left_dist, right_dist, p, q, i, 2)
+            S1_name = S1_name.replace('.', '_')
+            S2_name = S2_name.replace('.', '_')
+            cur = conn.cursor()
+            if query_type == 'count':  # count
+                estimate_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate = row[0] if row[0] is not None else 0
+                estimate = estimate * (1 / (p * q * q))
+            elif query_type == 'sum':  # sum
+                estimate_sql = """SELECT SUM(t1.col2) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate = row[0] if row[0] is not None else 0
+                estimate = estimate * (1 / (p * q * q))
+            elif query_type == 'avg':  # avg
+                estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.col2) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate_count = row[0] if row[0] is not None else 0
+                    estimate_sum = row[1] if row[1] is not None else 0
+                estimate_sum = estimate_sum * (1 / (p * q * q))
+                estimate_count = estimate_count * (1 / (p * q * q))
+                estimate = estimate_sum / estimate_count if estimate_count != 0 else 0
+            cur.close()
+
+            # record result
+            cur = conn.cursor()
+            add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
+            '{}', {}, '{}', '{}', '{}', {}, '{}', {:.3f}, {:.3f}, {}, {}, now()
+            )""".format(sample_schema, temp_table, query_type, i, left_dist,
+                        right_dist, cond_type, cond_val, 'N/A', p, q, actual,
+                        estimate)
+            cur.execute(add_result_sql)
+            cur.close()
+
+    cur = conn.cursor()
+    cur.execute("INSERT INTO TABLE {0}.{2} SELECT * FROM {0}.{1}".format(
+        sample_schema, temp_table, result_table))
     conn.commit()
     cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
     conn.commit()
@@ -495,11 +849,13 @@ def run_instacart_ours(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{}__{}__{}__{}__{}".format('orders', t1_join_col,
-                                                     t1_agg_col, query_type, i,
-                                                     1)
-        S2_name = "s__{}__{}__{}__{}__{}".format('order_products', t2_join_col,
-                                                 query_type, i, 2)
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
+            'orders', 'order_products', t1_join_col, t1_agg_col, query_type, i,
+            1)
+        S2_name = "s__{}__{}__{}__{}__{}__{}".format('orders',
+                                                     'order_products',
+                                                     t2_join_col, query_type,
+                                                     i, 2)
 
         cur = conn.cursor()
         if query_type == 'count':  # count
@@ -549,6 +905,175 @@ def run_instacart_ours(host,
     cur = conn.cursor()
     cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
         sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
+
+
+def run_instacart_ours_with_where(host,
+                                  port,
+                                  table_schema,
+                                  sample_schema,
+                                  query_type,
+                                  cond_type,
+                                  where_dist,
+                                  num_sample,
+                                  overwrite=False):
+    conn = impaladb.connect(host, port)
+    if overwrite:
+        drop_where_result_table(conn, sample_schema)
+
+    # create result table
+    create_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema, 'where_results')
+    result_table = 'where_results'
+
+    # get p,q,t1_join_col, t2_join_col, t1_agg_col
+    sql = """SELECT p, q, t1_join_col, t2_join_col, t1_agg_col FROM {}.meta WHERE
+    agg = '{}' and cond_type = '{}' and where_dist = '{}' ORDER BY ts DESC
+    LIMIT 1""".format(sample_schema, query_type, cond_type, where_dist)
+    cur = conn.cursor()
+    cur.execute(sql)
+    result = cur.fetchall()
+    for row in result:
+        p = row[0]
+        q = row[1]
+        t1_join_col = row[2]
+        t2_join_col = row[3]
+        t1_agg_col = row[4]
+
+    if cond_type == 'eq':
+        cond_op = '='
+    elif cond_type == 'geq':
+        cond_op = '>='
+    else:
+        print("Unsupported Cond Op: {}".format(cond_type))
+        return
+
+    cur = conn.cursor()
+    cur.execute("SELECT MIN({0}), MAX({0}) FROM {1}.{2} t1".format(
+        'order_hour_of_day', table_schema, 'orders'))
+    row = cur.fetchone()
+    start_val = row[0]
+    end_val = row[1]
+    increment = 1
+
+    for cond_val in range(start_val, end_val + 1, increment):
+        where_str = "{} {}".format(cond_op, cond_val)
+
+        # get actual value first
+        cur = conn.cursor()
+        if query_type == 'count':  # count
+            actual_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+            t1.order_id = t2.order_id
+            WHERE t1.order_hour_of_day {} {}""".format(table_schema, 'orders',
+                                                       'order_products',
+                                                       cond_op, cond_val)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        elif query_type == 'sum':  # sum
+            actual_sql = """SELECT SUM(t1.days_since_prior) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+            t1.order_id = t2.order_id
+            WHERE t1.order_hour_of_day {} {}""".format(table_schema, 'orders',
+                                                       'order_products',
+                                                       cond_op, cond_val)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        elif query_type == 'avg':  # avg
+            actual_sql = """SELECT AVG(t1.order_dow) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+            t1.order_id = t2.order_id
+            WHERE t1.order_hour_of_day {} {}""".format(table_schema, 'orders',
+                                                       'order_products',
+                                                       cond_op, cond_val)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        else:
+            print("Unsupported query: {}".format(query_type))
+            return
+        cur.close()
+
+        # get start idx
+        cur = conn.cursor()
+        sql = """SELECT max(idx) FROM {}.{} WHERE query = '{}' AND left_dist = '{}' AND
+        right_dist = '{}' AND cond_type = '{}' AND cond_val = {} AND where_dist = '{}'
+        GROUP BY query, left_dist, right_dist, cond_type, cond_val, where_dist""".format(
+            sample_schema, result_table, query_type, 'orders', 'order_products', cond_type,
+            cond_val, where_dist)
+        cur.execute(sql)
+        result = cur.fetchall()
+        start_idx = 0
+        for row in result:
+            start_idx = row[0] if row[0] is not None else 0
+        start_idx = start_idx + 1
+        cur.close()
+
+        # get estimate for each sample pair
+        for i in range(start_idx, num_sample + 1):
+            S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}__{}".format(
+                'orders', 'order_products', t1_join_col, t1_agg_col,
+                query_type, cond_type, where_dist, i, 1)
+            S2_name = "s__{}__{}__{}__{}__{}__{}__{}__{}".format(
+                'orders', 'order_products', t2_join_col, query_type, cond_type,
+                where_dist, i, 2)
+
+            cur = conn.cursor()
+            if query_type == 'count':  # count
+                estimate_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+                t1.order_id = t2.order_id
+                WHERE t1.order_hour_of_day {}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate = row[0] if row[0] is not None else 0
+                estimate = estimate * (1 / (p * q * q))
+            elif query_type == 'sum':  # sum
+                estimate_sql = """SELECT SUM(t1.days_since_prior) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+                t1.order_id = t2.order_id
+                WHERE t1.order_hour_of_day {}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate = row[0] if row[0] is not None else 0
+                estimate = float(estimate) * (1 / (p * q * q))
+            elif query_type == 'avg':  # avg
+                estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.order_dow) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+                t1.order_id = t2.order_id
+                WHERE t1.order_hour_of_day {}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate_count = row[0] if row[0] is not None else 0
+                    estimate_sum = row[1] if row[1] is not None else 0
+                estimate_sum = estimate_sum * (1 / (p * q * q))
+                estimate_count = estimate_count * (1 / (p * q * q))
+                estimate = estimate_sum / estimate_count if estimate_count != 0 else 0
+            cur.close()
+
+            # record result
+            cur = conn.cursor()
+            add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
+            '{}', {}, '{}', '{}', '{}', {}, '{}', {:.3f}, {:.3f}, {}, {}, now()
+            )""".format(sample_schema, temp_table, query_type, i, 'orders',
+                        'order_products', cond_type, cond_val, where_dist, p,
+                        q, actual, estimate)
+            cur.execute(add_result_sql)
+            cur.close()
+
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO TABLE {0}.{2} SELECT * FROM {0}.{1}".format(
+            sample_schema, temp_table, result_table))
     conn.commit()
     cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
     conn.commit()
@@ -622,9 +1147,10 @@ def run_instacart_preset(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format('orders', p, q, i, 1)
-        S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(
-            'order_products', p, q, i, 2)
+        S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            'orders', 'order_products', p, q, i, 1)
+        S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            'orders', 'order_products', p, q, i, 2)
         S1_name = S1_name.replace('.', '_')
         S2_name = S2_name.replace('.', '_')
         cur = conn.cursor()
@@ -675,6 +1201,160 @@ def run_instacart_preset(host,
     cur = conn.cursor()
     cur.execute("INSERT INTO TABLE {0}.results SELECT * FROM {0}.{1}".format(
         sample_schema, temp_table))
+    conn.commit()
+    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
+    conn.commit()
+    cur.close()
+
+
+def run_instacart_preset_with_where(host,
+                                    port,
+                                    table_schema,
+                                    sample_schema,
+                                    query_type,
+                                    cond_type,
+                                    p,
+                                    q,
+                                    num_sample,
+                                    overwrite=False):
+    conn = impaladb.connect(host, port)
+    if overwrite:
+        drop_where_result_table(conn, sample_schema)
+
+    # create result table
+    create_where_result_table(conn, sample_schema)
+    # create temp table
+    temp_table = create_temp_table(conn, sample_schema, 'where_results')
+    result_table = 'where_results'
+
+    if cond_type == 'eq':
+        cond_op = '='
+    elif cond_type == 'geq':
+        cond_op = '>='
+    else:
+        print("Unsupported Cond Op: {}".format(cond_type))
+        return
+
+    cur = conn.cursor()
+    cur.execute("SELECT MIN({0}), MAX({0}) FROM {1}.{2} t1".format(
+        'order_hour_of_day', table_schema, 'orders'))
+    row = cur.fetchone()
+    start_val = row[0]
+    end_val = row[1]
+    increment = 1
+
+    for cond_val in range(start_val, end_val + 1, increment):
+        where_str = "{} {}".format(cond_op, cond_val)
+        # get actual value first
+        cur = conn.cursor()
+        if query_type == 'count':  # count
+            actual_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+            t1.order_id = t2.order_id
+            WHERE t1.order_hour_of_day {3}""".format(table_schema, 'orders',
+                                                     'order_products',
+                                                     where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        elif query_type == 'sum':  # sum
+            actual_sql = """SELECT SUM(t1.days_since_prior) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+            t1.order_id = t2.order_id
+            WHERE t1.order_hour_of_day {3}""".format(table_schema, 'orders',
+                                                     'order_products',
+                                                     where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        elif query_type == 'avg':  # avg
+            actual_sql = """SELECT AVG(t1.order_dow) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+            t1.order_id = t2.order_id
+            WHERE t1.order_hour_of_day {3}""".format(table_schema, 'orders',
+                                                     'order_products',
+                                                     where_str)
+            cur.execute(actual_sql)
+            result = cur.fetchall()
+            for row in result:
+                actual = row[0] if row[0] is not None else 0
+        else:
+            print("Unsupported query: {}".format(query_type))
+            return
+        cur.close()
+
+        # get start idx
+        cur = conn.cursor()
+        sql = """SELECT max(idx) FROM {}.{} WHERE query = '{}' AND left_dist = '{}' AND
+        right_dist = '{}' and p = {} and q = {} and cond_type = '{}' and cond_val = {}
+        GROUP BY query, left_dist, right_dist, p, q, cond_type, cond_val""".format(
+            sample_schema, result_table, query_type, 'orders', 'order_products', p, q,
+            cond_type, cond_val)
+        cur.execute(sql)
+        result = cur.fetchall()
+        start_idx = 0
+        for row in result:
+            start_idx = row[0] if row[0] is not None else 0
+        start_idx = start_idx + 1
+        cur.close()
+
+        # get estimate for each sample pair
+        for i in range(start_idx, num_sample + 1):
+            S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+                'orders', 'order_products', p, q, i, 1)
+            S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+                'orders', 'order_products', p, q, i, 2)
+            S1_name = S1_name.replace('.', '_')
+            S2_name = S2_name.replace('.', '_')
+            cur = conn.cursor()
+            if query_type == 'count':  # count
+                estimate_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+                t1.order_id = t2.order_id
+                WHERE t1.order_hour_of_day {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate = row[0] if row[0] is not None else 0
+                estimate = estimate * (1 / (p * q * q))
+            elif query_type == 'sum':  # sum
+                estimate_sql = """SELECT SUM(t1.days_since_prior) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+                t1.order_id = t2.order_id
+                WHERE t1.order_hour_of_day {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate = row[0] if row[0] is not None else 0
+                estimate = float(estimate) * (1 / (p * q * q))
+            elif query_type == 'avg':  # avg
+                estimate_sql = """SELECT COUNT(*) as val1, SUM(t1.order_dow) as val2 FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
+                t1.order_id = t2.order_id
+                WHERE t1.order_hour_of_day {3}""".format(
+                    sample_schema, S1_name, S2_name, where_str)
+                cur.execute(estimate_sql)
+                result = cur.fetchall()
+                for row in result:
+                    estimate_count = row[0] if row[0] is not None else 0
+                    estimate_sum = row[1] if row[1] is not None else 0
+                estimate_sum = estimate_sum * (1 / (p * q * q))
+                estimate_count = estimate_count * (1 / (p * q * q))
+                estimate = estimate_sum / estimate_count if estimate_count != 0 else 0
+            cur.close()
+
+            # record result
+            cur = conn.cursor()
+            add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
+            '{}', {}, '{}', '{}', '{}', {}, '{}', {:.3f}, {:.3f}, {}, {}, now()
+            )""".format(sample_schema, temp_table, query_type, i, 'orders',
+                        'order_products', cond_type, cond_val, 'N/A', p, q,
+                        actual, estimate)
+            cur.execute(add_result_sql)
+            cur.close()
+
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO TABLE {0}.{2} SELECT * FROM {0}.{1}".format(
+            sample_schema, temp_table, result_table))
     conn.commit()
     cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, temp_table))
     conn.commit()
@@ -760,11 +1440,11 @@ def run_movielens_ours(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{}__{}__{}__{}__{}".format('ratings', t1_join_col,
-                                                     t1_agg_col, query_type, i,
-                                                     1)
-        S2_name = "s__{}__{}__{}__{}__{}".format('movies', t2_join_col,
-                                                 query_type, i, 2)
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
+            'ratings', 'movies', t1_join_col, t1_agg_col, query_type, i, 1)
+        S2_name = "s__{}__{}__{}__{}__{}__{}".format('ratings', 'movies',
+                                                     t2_join_col, query_type,
+                                                     i, 2)
         cur = conn.cursor()
         if query_type == 'count':  # count
             estimate_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
@@ -887,8 +1567,10 @@ def run_movielens_preset(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format('movies', p, q, i, 1)
-        S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format('ratings', p, q, i, 2)
+        S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            'movies', 'ratings', p, q, i, 1)
+        S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            'movies', 'ratings', p, q, i, 2)
         S1_name = S1_name.replace('.', '_')
         S2_name = S2_name.replace('.', '_')
         cur = conn.cursor()
@@ -1027,11 +1709,11 @@ def run_tpch_ours(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{}__{}__{}__{}__{}".format('lineitem', t1_join_col,
-                                                     t1_agg_col, query_type, i,
-                                                     1)
-        S2_name = "s__{}__{}__{}__{}__{}".format('orders', t2_join_col,
-                                                 query_type, i, 2)
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
+            'lineitem', 'orders', t1_join_col, t1_agg_col, query_type, i, 1)
+        S2_name = "s__{}__{}__{}__{}__{}__{}".format('lineitem', 'orders',
+                                                     t2_join_col, query_type,
+                                                     i, 2)
         cur = conn.cursor()
         if query_type == 'count':  # count
             estimate_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
@@ -1156,9 +1838,10 @@ def run_tpch_preset(host,
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format('orders', p, q, i, 1)
-        S2_name = "s__{}__{:.3f}p__{:.3f}q_{}_{}".format(
-            'lineitem', p, q, i, 2)
+        S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            'orders', 'lineitem', p, q, i, 1)
+        S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+            'orders', 'lineitem', p, q, i, 2)
         S1_name = S1_name.replace('.', '_')
         S2_name = S2_name.replace('.', '_')
         cur = conn.cursor()
