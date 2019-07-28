@@ -96,13 +96,14 @@ for dist in dists:
 dec_args.append(
     (impala_host, impala_port, 'instacart', 'orders', 'order_id',
      'order_hour_of_day', 'instacart', 'order_products', 'order_id', None,
-     'instacart_cent2', 'count', num_instacart_samples, overwrite))
+     'instacart_dec2', 'count', num_instacart_samples, overwrite))
+dec_args.append(
+    (impala_host, impala_port, 'instacart', 'orders', 'order_id',
+     'days_since_prior', 'instacart', 'order_products', 'order_id', None,
+     'instacart_dec2', 'sum', num_instacart_samples, overwrite))
 dec_args.append((impala_host, impala_port, 'instacart', 'orders', 'order_id',
-             'days_since_prior', 'instacart', 'order_products', 'order_id',
-             None, 'instacart_cent2', 'sum', num_instacart_samples, overwrite))
-dec_args.append((impala_host, impala_port, 'instacart', 'orders', 'order_id',
-             'order_dow', 'instacart', 'order_products', 'order_id', None,
-             'instacart_cent2', 'avg', num_instacart_samples, overwrite))
+                 'order_dow', 'instacart', 'order_products', 'order_id', None,
+                 'instacart_dec2', 'avg', num_instacart_samples, overwrite))
 
 # create samples
 for arg in args:

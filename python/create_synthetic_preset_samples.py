@@ -18,7 +18,7 @@ def callback_error(result):
     msg["Subject"] = "Run Failed."
     p = Popen(["/usr/sbin/sendmail", "-t", "-oi"], stdin=PIPE)
     p.communicate(msg.as_bytes())
-    sys.exit("Terminate due to subprocess failure")
+    #  sys.exit("Terminate due to subprocess failure")
 
 
 def callback_success(result):

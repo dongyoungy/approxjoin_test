@@ -4,7 +4,7 @@ import math
 import time
 import pathlib
 import datetime
-import MemDB
+# import MemDB
 import hashlib
 import uuid
 
@@ -1683,14 +1683,14 @@ def create_dec_sample_pair_from_impala(host,
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
-        """.format(target_schema, S1_name, T1_schema, T1_table, p, q1,
+        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
                    hash_num + i, T1_join_col, hash_num2, m, modval)
         create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
         SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
-        """.format(target_schema, S2_name, T2_schema, T2_table, p, q2,
+        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
                    hash_num + i, T2_join_col, hash_num2, m, modval)
 
         #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
@@ -1940,14 +1940,14 @@ def create_cent_sample_pair_from_impala(host,
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
-        """.format(target_schema, S1_name, T1_schema, T1_table, p, q1,
+        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
                    hash_num + i, T1_join_col, hash_num2, m, modval)
         create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
         SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
-        """.format(target_schema, S2_name, T2_schema, T2_table, p, q2,
+        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
                    hash_num + i, T2_join_col, hash_num2, m, modval)
 
         #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
@@ -2231,14 +2231,14 @@ def create_cent_sample_pair_with_where_from_impala(host,
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
-        """.format(target_schema, S1_name, T1_schema, T1_table, p, q1,
+        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
                    hash_num + i, T1_join_col, hash_num2, m, modval)
         create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
         SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
-        """.format(target_schema, S2_name, T2_schema, T2_table, p, q2,
+        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
                    hash_num + i, T2_join_col, hash_num2, m, modval)
 
         #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
@@ -2489,14 +2489,14 @@ def create_cent_sample_pair_for_all_from_impala(host,
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
-        """.format(target_schema, S1_name, T1_schema, T1_table, p, q1,
+        """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
                    hash_num + i, T1_join_col, hash_num2, m, modval)
         create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
         SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
         WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
-        """.format(target_schema, S2_name, T2_schema, T2_table, p, q2,
+        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
                    hash_num + i, T2_join_col, hash_num2, m, modval)
 
 
@@ -2543,6 +2543,7 @@ def create_sample(num_rows,
                   leftDist,
                   rightDist,
                   type,
+                  sample_schema,
                   isCentralized=True):
 
     np.random.seed(int(time.time()))
