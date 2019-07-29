@@ -40,6 +40,37 @@ def get_existing_tables(conn, schema):
     return table_list
 
 
+def estimate_variance(a_v, b_v, mu_v, var_v, p):
+    e1 = 0.01
+    e2 = 0.01
+#  % calculate 'a' first
+    a_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0])**2
+    a1 = (1/e2 - 1/p) * sum(a_v[:,1] * mu_v[:,1] * b_v[:,0]) / a_common
+    a2 = (1/e1 - 1/p) * sum(a_v[:,0] * (mu_v[:,1] + var_v[:,0]) * b_v[:,1]) / a_common
+    a3 = (p/(e1*e2) - 1/e1 - 1/e2 + 1/p) * sum(a_v[:,0] * (mu_v[:,1] + var_v[:,0]) * b_v[:,0]) / a_common
+    a4 = ((1-p)/p) * sum(a_v[:,1] * mu_v[:,1] * b_v[:,1]) / a_common
+    a = a1 + a2 + a3 + a4;
+
+#   % calculate 'b'
+    b_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0]) / sum(a_v[:,0] * b_v[:,0])**3
+    b1 = (p/(e1*e2) - 1/e1 - 1/e2 + 1/p) * sum(a_v[:,0] * mu_v[:,0] * b_v[:,0]) * b_common;
+    b2 = (1/e1 - 1/p) * sum(a_v[:,0] * mu_v[:,0] * b_v[:,1]) * b_common
+    b3 = (1/e2 - 1/p) * sum(a_v[:,1] * mu_v[:,0] * b_v[:,0]) * b_common
+    b4 = ((1-p)/p) * sum(a_v[:,1] * mu_v[:,0] * b_v[:,1]) * b_common
+    b = b1 + b2 + b3 + b4;
+
+#   % calculate 'c'
+    c_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0])**2 / sum(a_v[:,0] * b_v[:,0])**4
+    c1 = (1/e2 - 1/p) * sum(a_v[:,1] * b_v[:,0]) * c_common;
+    c2 = (1/e1 - 1/p) * sum(a_v[:,0] * b_v[:,1]) * c_common;
+    c3 = (p/(e1*e2) - 1/e1 - 1/e2 + 1/p) * sum(a_v[:,0] * b_v[:,0]) * c_common;
+    c4 = ((1-p)/p) * sum(a_v[:,1] * b_v[:,1]) * c_common;
+    c = c1 + c2 + c3 + c4;
+
+    estimate = a - b + c;
+    return estimate
+
+
 def test1(num_rows, num_keys, leftDist, rightDist, type):
     T1_name = raw_data_path + "/t_{0}n_{1}k_{2}_{3}_{4}.csv".format(
         num_rows, num_keys, leftDist, type, 1)
@@ -1916,6 +1947,9 @@ def create_cent_sample_pair_from_impala(host,
     q1 = e1 / p
     q2 = e2 / p
     t3 = datetime.datetime.now()
+    est = estimate_variance(a_v, b_v, mu_v, var_v, p)
+    print((T1_table, T2_table, est))
+    return
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
 
@@ -2146,7 +2180,8 @@ def create_cent_sample_pair_with_where_from_impala(host,
                        a_v[:, 0] * b_v[:, 1] + a_v[:, 0] * b_v[:, 0])
             sum2 = sum(a_v[:, 0] * b_v[:, 0])
             val1 = val1 + (ratio * e1 * e2 * sum1)
-            val2 = val2 + (ratio * e1 * e2 * sum2)
+            # val2 = val2 + (ratio * e1 * e2 * sum2)
+            val2 = val2 + (ratio * sum2)
         elif agg_type == 'sum':
             sum1 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
             sum2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0])
@@ -2154,7 +2189,8 @@ def create_cent_sample_pair_with_where_from_impala(host,
             sum4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
             sum5 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
             val1 = val1 + ratio * e1 * e2 * (sum1 - sum2 - sum3 + sum4)
-            val2 = val2 + ratio * e1 * e2 * sum5
+            # val2 = val2 + ratio * e1 * e2 * sum5
+            val2 = val2 + ratio * sum5
         elif agg_type == 'avg':
             A_denom = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])**2
             A1 = sum(a_v[:, 0] *
@@ -2208,6 +2244,7 @@ def create_cent_sample_pair_with_where_from_impala(host,
 
     q1 = e1 / p
     q2 = e2 / p
+    print ((val1, val2, p, q1))
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
     tables = get_existing_tables(conn, sample_schema)
@@ -2402,7 +2439,8 @@ def create_cent_sample_pair_for_all_from_impala(host,
                a_v[:, 0] * b_v[:, 1] + a_v[:, 0] * b_v[:, 0])
     sum2 = sum(a_v[:, 0] * b_v[:, 0])
     count_val1 = e1 * e2 * sum1
-    count_val2 = e1 * e2 * sum2
+    # count_val2 = e1 * e2 * sum2
+    count_val2 =  sum2
 
     # for SUM
     sum1 = sum(a_v[:, 1] * mu_sum_v[:, 1] * b_v[:, 1])
@@ -2411,7 +2449,8 @@ def create_cent_sample_pair_for_all_from_impala(host,
     sum4 = sum(a_v[:, 0] * (mu_sum_v[:, 1] + var_sum_v[:, 0]) * b_v[:, 0])
     sum5 = sum(a_v[:, 0] * (mu_sum_v[:, 1] + var_sum_v[:, 0]) * b_v[:, 0])
     sum_val1 = e1 * e2 * (sum1 - sum2 - sum3 + sum4)
-    sum_val2 = e1 * e2 * sum5
+    # sum_val2 = e1 * e2 * sum5
+    sum_val2 = sum5
 
     # for AVG
     A_denom = sum(a_v[:, 0] * mu_avg_v[:, 0] * b_v[:, 0])**2
