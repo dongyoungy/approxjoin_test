@@ -28,8 +28,8 @@ def callback_success(result):
 num_proc = 32
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
-num_instacart_samples = 1
-num_synthetic_samples = 1
+num_instacart_samples = 500
+num_synthetic_samples = 500
 overwrite = False
 dec_args = []
 args = []
@@ -42,23 +42,8 @@ T2_schema = 'instacart'
 T2_table = 'order_products'
 T2_join_col = 'order_id'
 target_schema = 'instacart_preset'
-impala_host = 'cp-5'
+impala_host = 'cp-9'
 impala_port = 21050
-
-# samples for instacart queries
-'''
-args.append(
-    (impala_host, impala_port, 'instacart', 'orders', 'order_id',
-     'order_hour_of_day', 'instacart', 'order_products', 'order_id', None,
-     'instacart_cent_sample', 'count', num_instacart_samples, overwrite))
-args.append(
-    (impala_host, impala_port, 'instacart', 'orders', 'order_id',
-     'days_since_prior', 'instacart', 'order_products', 'order_id', None,
-     'instacart_cent_sample', 'sum', num_instacart_samples, overwrite))
-args.append((impala_host, impala_port, 'instacart', 'orders', 'order_id',
-             'order_dow', 'instacart', 'order_products', 'order_id', None,
-             'instacart_cent_sample', 'avg', num_instacart_samples, overwrite))
-'''
 
 # where samples for synthetic
 for leftDist in [
@@ -66,25 +51,25 @@ for leftDist in [
 ]:
     for rightDist in ['uniform_2']:
         for agg in ['count', 'sum', 'avg']:
-            for cond in ['eq', 'geq']:
+            for cond in ['eq']:
                 for where_type in ['uniform', 'identical']:
                     args.append(
                         (impala_host, impala_port, 'synthetic_10m', leftDist,
                          'col1', 'col2', 'synthetic_10m', rightDist, 'col1',
-                         'col3', 'synthetic_10m_where_sample', agg, cond,
+                         'col3', 'synthetic_10m_where2', agg, cond,
                          where_type, num_synthetic_samples, overwrite))
 
 # where samples for instacart
 for leftDist in ['orders']:
     for rightDist in ['order_products']:
         for agg in ['count', 'sum', 'avg']:
-            for cond in ['eq', 'geq']:
+            for cond in ['eq']:
                 for where_type in ['uniform', 'identical']:
                     args.append(
                         (impala_host, impala_port, 'instacart', leftDist,
                          'order_id', 'days_since_prior', 'instacart',
                          rightDist, 'order_id', 'order_hour_of_day',
-                         'instacart_where_sample', agg, cond, where_type,
+                         'instacart_where2', agg, cond, where_type,
                          num_synthetic_samples, overwrite))
 
 # create samples

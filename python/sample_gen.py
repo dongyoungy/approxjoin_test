@@ -1305,6 +1305,8 @@ def create_dec_sample_pair_from_impala(host,
         worst_table = 'normal_max_var_2'
     elif T1_table == 'powerlaw_1':
         worst_table = 'powerlaw_max_var_2'
+    elif T1_table == 'orders':
+        worst_table = 'order_products'
 
     cur = conn.cursor()
     T2_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
@@ -1352,6 +1354,8 @@ def create_dec_sample_pair_from_impala(host,
             var_v[col1 - 1, 1] = var
     a_v[:, 2] = a_v[:, 1]**2
     mu_v[:, 2] = mu_v[:, 1]**2
+    mu_v = np.nan_to_num(mu_v)
+    var_v = np.nan_to_num(var_v)
 
     p = 0
     n_b = 0
@@ -1418,7 +1422,7 @@ def create_dec_sample_pair_from_impala(host,
             sum4 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
             sum5 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
             val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
-            val = math.sqrt(val)
+            val = math.sqrt(val) if val > 0 else 0 
             p = min([1, max([e1, e2, val])])
         else:
             p1 = r[0]
@@ -1429,7 +1433,7 @@ def create_dec_sample_pair_from_impala(host,
             sum4 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
             sum5 = a_v[v1, 1] * (mu_v[v1, 2] + var_v[v1, 1]) * n_b
             val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
-            val = math.sqrt(val)
+            val = math.sqrt(val) if val > 0 else 0 
             p3 = min([1, max([e1, e2, val])])
 
             sum1 = a_v[v2, 2] * mu_v[v2, 2] * n_b**2
@@ -1438,7 +1442,7 @@ def create_dec_sample_pair_from_impala(host,
             sum4 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b
             sum5 = a_v[v2, 1] * (mu_v[v2, 2] + var_v[v2, 1]) * n_b
             val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
-            val = math.sqrt(val)
+            val = math.sqrt(val) if val > 0 else 0 
             p4 = min([1, max([e1, e2, val])])
 
             p5 = max([e1, e2])
@@ -1823,6 +1827,8 @@ def create_cent_sample_pair_from_impala(host,
             var_v[col1 - 1, 0] = var
     a_v[:, 1] = a_v[:, 0]**2
     mu_v[:, 1] = mu_v[:, 0]**2
+    mu_v = np.nan_to_num(mu_v)
+    var_v = np.nan_to_num(var_v)
 
     p = 0
 
@@ -2130,6 +2136,8 @@ def create_cent_sample_pair_with_where_from_impala(host,
                 var_v[col1 - 1, 0] = var
         a_v[:, 1] = a_v[:, 0]**2
         mu_v[:, 1] = mu_v[:, 0]**2
+        mu_v = np.nan_to_num(mu_v)
+        var_v = np.nan_to_num(var_v)
 
         p = 0
 
@@ -2287,7 +2295,8 @@ def create_cent_sample_pair_for_all_from_impala(host,
                                                 T1_schema,
                                                 T1_table,
                                                 T1_join_col,
-                                                T1_agg_col,
+                                                T1_agg_col_sum,
+                                                T1_agg_col_avg,
                                                 T2_schema,
                                                 T2_table,
                                                 T2_join_col,
@@ -2328,14 +2337,17 @@ def create_cent_sample_pair_for_all_from_impala(host,
 
     a_v = np.zeros((num_keys, 2))
     b_v = np.zeros((num_keys, 2))
-    mu_v = np.zeros((num_keys, 2))
-    var_v = np.zeros((num_keys, 2))
+    mu_sum_v = np.zeros((num_keys, 2))
+    var_sum_v = np.zeros((num_keys, 2))
+    mu_avg_v = np.zeros((num_keys, 2))
+    var_avg_v = np.zeros((num_keys, 2))
 
     keys = np.arange(1, num_keys + 1)
 
     cur = conn.cursor()
-    T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}) FROM {2}.{3} GROUP BY {0};
-    """.format(T1_join_col, T1_agg_col, T1_schema, T1_table)
+    T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}), avg({2}), variance({2}) 
+    FROM {3}.{4} GROUP BY {0};
+    """.format(T1_join_col, T1_agg_col_sum, T1_agg_col_avg, T1_schema, T1_table)
     cur.execute(T1_group_by_count_sql)
 
     while True:
@@ -2346,15 +2358,26 @@ def create_cent_sample_pair_for_all_from_impala(host,
         for row in results:
             col1 = row[0]
             cnt = row[1]
-            mean = row[2]
-            var = row[3]
+            mean_sum = row[2]
+            var_sum = row[3]
+            mean_avg = row[4]
+            var_avg = row[5]
             a_v[col1 - 1, 0] = cnt
-            mu_v[col1 - 1, 0] = mean
-            if var is None:
-                var = 0
-            var_v[col1 - 1, 0] = var
+            mu_sum_v[col1 - 1, 0] = mean_sum
+            if var_sum is None:
+                var_sum = 0
+            var_sum_v[col1 - 1, 0] = var_sum
+            mu_avg_v[col1 - 1, 0] = mean_avg
+            if var_avg is None:
+                var_avg = 0
+            var_avg_v[col1 - 1, 0] = var_avg
     a_v[:, 1] = a_v[:, 0]**2
-    mu_v[:, 1] = mu_v[:, 0]**2
+    mu_sum_v[:, 1] = mu_sum_v[:, 0]**2
+    mu_avg_v[:, 1] = mu_avg_v[:, 0]**2
+    mu_sum_v = np.nan_to_num(mu_sum_v)
+    mu_avg_v = np.nan_to_num(mu_avg_v)
+    var_sum_v = np.nan_to_num(var_sum_v)
+    var_avg_v = np.nan_to_num(var_avg_v)
 
     p = 0
 
@@ -2382,28 +2405,28 @@ def create_cent_sample_pair_for_all_from_impala(host,
     count_val2 = e1 * e2 * sum2
 
     # for SUM
-    sum1 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
-    sum2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0])
-    sum3 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
-    sum4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
-    sum5 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+    sum1 = sum(a_v[:, 1] * mu_sum_v[:, 1] * b_v[:, 1])
+    sum2 = sum(a_v[:, 1] * mu_sum_v[:, 1] * b_v[:, 0])
+    sum3 = sum(a_v[:, 0] * (mu_sum_v[:, 1] + var_sum_v[:, 0]) * b_v[:, 1])
+    sum4 = sum(a_v[:, 0] * (mu_sum_v[:, 1] + var_sum_v[:, 0]) * b_v[:, 0])
+    sum5 = sum(a_v[:, 0] * (mu_sum_v[:, 1] + var_sum_v[:, 0]) * b_v[:, 0])
     sum_val1 = e1 * e2 * (sum1 - sum2 - sum3 + sum4)
     sum_val2 = e1 * e2 * sum5
 
     # for AVG
-    A_denom = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])**2
-    A1 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0]) / A_denom
-    A2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / A_denom
-    A3 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0]) / A_denom
-    A4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
+    A_denom = sum(a_v[:, 0] * mu_avg_v[:, 0] * b_v[:, 0])**2
+    A1 = sum(a_v[:, 0] * (mu_avg_v[:, 1] + var_avg_v[:, 0]) * b_v[:, 0]) / A_denom
+    A2 = sum(a_v[:, 1] * mu_avg_v[:, 1] * b_v[:, 1]) / A_denom
+    A3 = sum(a_v[:, 1] * mu_avg_v[:, 1] * b_v[:, 0]) / A_denom
+    A4 = sum(a_v[:, 0] * (mu_avg_v[:, 1] + var_avg_v[:, 0]) * b_v[:, 1])
     A = A1 + A2 - A3 - A4
 
     B_denom = sum(a_v[:, 0] * b_v[:, 0]) * sum(
-        a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])
+        a_v[:, 0] * mu_avg_v[:, 0] * b_v[:, 0])
     B1 = 1 / sum(a_v[:, 0] * b_v[:, 0])
-    B2 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 1]) / B_denom
-    B3 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 0]) / B_denom
-    B4 = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 1]) / B_denom
+    B2 = sum(a_v[:, 1] * mu_avg_v[:, 0] * b_v[:, 1]) / B_denom
+    B3 = sum(a_v[:, 1] * mu_avg_v[:, 0] * b_v[:, 0]) / B_denom
+    B4 = sum(a_v[:, 0] * mu_avg_v[:, 0] * b_v[:, 1]) / B_denom
     B = B1 + B2 - B3 - B4
 
     C_denom = sum(a_v[:, 0] * b_v[:, 0])**2
@@ -2419,20 +2442,28 @@ def create_cent_sample_pair_for_all_from_impala(host,
 
     # estimate estimators using sketch
     num_sketch = 100
-    sum_estimate = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,1])
+    sum_estimate1 = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,1]) for SUM
+    sum_estimate2 = 0  # sum(a_v[:,1] * mu_v[:,1] * b_v[:,1]) for AVG
     count_estimate = 0  # sum(a_v[:,1] * b_v[:,1]))
     for i in range(1, num_sketch + 1):
         x = np.random.randint(0, 2, size=num_keys)
         x[x == 0] = -1
-        v1_1 = sum(a_v[:, 1] * mu_v[:, 1] * x[:])
-        v1_2 = sum(b_v[:, 1] * x[:])
-        sum_estimate = sum_estimate + (v1_1 * v1_2)
-        v2_1 = sum(a_v[:, 1] * x[:])
+        v1_1_sum = sum(a_v[:, 0] * mu_sum_v[:, 0] * x[:])
+        v1_1_avg = sum(a_v[:, 0] * mu_avg_v[:, 0] * x[:])
+        v1_2 = sum(b_v[:, 0] * x[:])
+        sum_estimate1 = sum_estimate1 + (v1_1_sum * v1_2)
+        sum_estimate2 = sum_estimate2 + (v1_1_avg * v1_2)
+        v2_1 = sum(a_v[:, 0] * x[:])
         v2_2 = v1_2
         count_estimate = count_estimate + (v2_1 * v2_2)
-    sum_estimate = sum_estimate / num_sketch
+    sum_estimate = sum_estimate1 / num_sketch
     count_estimate = count_estimate / num_sketch
-    avg_estimate = sum_estimate / count_estimate
+    sum_estimate2 = sum_estimate2 / num_sketch
+    avg_estimate = sum_estimate2 / count_estimate
+
+    print((count_val1, sum_val1, avg_val1))
+    print((count_val2, sum_val2, avg_val2))
+    print((count_estimate, sum_estimate, avg_estimate))
 
     count_val1 = count_val1 / (count_estimate**2)
     count_val2 = count_val2 / (count_estimate**2)
@@ -2441,8 +2472,12 @@ def create_cent_sample_pair_for_all_from_impala(host,
     avg_val1 = avg_val1 / (avg_estimate**2)
     avg_val2 = avg_val2 / (avg_estimate**2)
 
+    print((count_val1, sum_val1, avg_val1))
+    print((count_val2, sum_val2, avg_val2))
+
     val1 = count_val1 + sum_val1 + avg_val1
     val2 = count_val2 + sum_val2 + avg_val2
+
 
     if val1 <= 0 and val2 > 0:
         p = max(e1, e2)
@@ -2463,17 +2498,19 @@ def create_cent_sample_pair_for_all_from_impala(host,
 
     q1 = e1 / p
     q2 = e2 / p
+    print((T1_table, T2_table, val1, val2, p, q1))
     #  hash_num = np.random.randint(1000 * 1000 * 1000)
     cur = conn.cursor()
     cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
+    tables = get_existing_tables(conn, sample_schema)
 
     m = 1540483477
     modval = 2**32
     for i in range(1, num_sample + 1):
         hash_num = np.random.randint(1000 * 1000)
         hash_num2 = np.random.randint(1000 * 1000)
-        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
-            T1_table, T2_table, T1_join_col, T1_agg_col, 'all', i, 1)
+        S1_name = "s__{}__{}__{}__{}__{}__{}".format(
+            T1_table, T2_table, T1_join_col, 'all', i, 1)
         S2_name = "s__{}__{}__{}__{}__{}__{}".format(T1_table, T2_table,
                                                      T2_join_col, 'all', i, 2)
 
@@ -2483,6 +2520,9 @@ def create_cent_sample_pair_for_all_from_impala(host,
             cur.execute("DROP TABLE IF EXISTS {}.{}".format(
                 sample_schema, S2_name))
             conn.commit()
+        else:
+            if S1_name in tables and S2_name in tables:
+                continue
 
         create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
         SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
@@ -2533,7 +2573,7 @@ def create_cent_sample_pair_for_all_from_impala(host,
     ts = int(time.time())
     insert_meta = """INSERT INTO TABLE {}.meta VALUES ('{}','{}','{}','{}','{}','{}',{},{},{},now())""".format(
         sample_schema, T1_table, T2_table, 'all', T1_join_col, T2_join_col,
-        T1_agg_col, 'NULL', p, q1)
+        'N/A', 'NULL', p, q1)
     cur.execute(insert_meta)
     cur.close()
 
