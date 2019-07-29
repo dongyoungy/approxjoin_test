@@ -43,31 +43,36 @@ def get_existing_tables(conn, schema):
 def estimate_variance(a_v, b_v, mu_v, var_v, p):
     e1 = 0.01
     e2 = 0.01
+    q1 = e1 / p
+    q2 = e2 / p
 #  % calculate 'a' first
     a_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0])**2
-    a1 = (1/e2 - 1/p) * sum(a_v[:,1] * mu_v[:,1] * b_v[:,0]) / a_common
-    a2 = (1/e1 - 1/p) * sum(a_v[:,0] * (mu_v[:,1] + var_v[:,0]) * b_v[:,1]) / a_common
-    a3 = (p/(e1*e2) - 1/e1 - 1/e2 + 1/p) * sum(a_v[:,0] * (mu_v[:,1] + var_v[:,0]) * b_v[:,0]) / a_common
+    a1 = ((1-q2) / (p*q2)) * sum(a_v[:,1] * mu_v[:,1] * b_v[:,0]) / a_common
+    a2 = ((1-q1) / (p*q1)) * sum(a_v[:,0] * (mu_v[:,1] + var_v[:,0]) * b_v[:,1]) / a_common
+    a3 = ((1-q1)*(1-q2) / (p*q1*q2)) * sum(a_v[:,0] * (mu_v[:,1] + var_v[:,0]) * b_v[:,0]) / a_common
     a4 = ((1-p)/p) * sum(a_v[:,1] * mu_v[:,1] * b_v[:,1]) / a_common
     a = a1 + a2 + a3 + a4;
 
 #   % calculate 'b'
-    b_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0]) / sum(a_v[:,0] * b_v[:,0])**3
-    b1 = (p/(e1*e2) - 1/e1 - 1/e2 + 1/p) * sum(a_v[:,0] * mu_v[:,0] * b_v[:,0]) * b_common;
-    b2 = (1/e1 - 1/p) * sum(a_v[:,0] * mu_v[:,0] * b_v[:,1]) * b_common
-    b3 = (1/e2 - 1/p) * sum(a_v[:,1] * mu_v[:,0] * b_v[:,0]) * b_common
-    b4 = ((1-p)/p) * sum(a_v[:,1] * mu_v[:,0] * b_v[:,1]) * b_common
+    b_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0]) / sum(a_v[:,0] * b_v[:,0])
+    b1 =  ((1-q2) / (p*q2))* sum(a_v[:,1] * mu_v[:,0] * b_v[:,0]) / b_common;
+    b2 =  ((1-q1) / (p*q1)) * sum(a_v[:,0] * mu_v[:,0] * b_v[:,1]) / b_common
+    b3 =  ((1-q1)*(1-q2) / (p*q1*q2)) * (1 / sum(a_v[:,0] * b_v[:,0]))
+    b4 = ((1-p)/p) * sum(a_v[:,1] * mu_v[:,0] * b_v[:,1]) / b_common
     b = b1 + b2 + b3 + b4;
 
 #   % calculate 'c'
-    c_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0])**2 / sum(a_v[:,0] * b_v[:,0])**4
-    c1 = (1/e2 - 1/p) * sum(a_v[:,1] * b_v[:,0]) * c_common;
-    c2 = (1/e1 - 1/p) * sum(a_v[:,0] * b_v[:,1]) * c_common;
-    c3 = (p/(e1*e2) - 1/e1 - 1/e2 + 1/p) * sum(a_v[:,0] * b_v[:,0]) * c_common;
-    c4 = ((1-p)/p) * sum(a_v[:,1] * b_v[:,1]) * c_common;
+    c_common = sum(a_v[:,0] * b_v[:,0])**2
+    c1 = ((1-q2) / (p*q2)) * sum(a_v[:,1] * b_v[:,0]) / c_common;
+    c2 =  ((1-q1) / (p*q1)) * sum(a_v[:,0] * b_v[:,1]) / c_common;
+    c3 =  ((1-q1)*(1-q2) / (p*q1*q2)) * sum(a_v[:,0] * b_v[:,0]) / c_common;
+    c4 = ((1-p)/p) * sum(a_v[:,1] * b_v[:,1]) / c_common;
     c = c1 + c2 + c3 + c4;
 
-    estimate = a - b + c;
+    e_sum = p * q1 * q2 * sum(a_v[:,0] * mu_v[:,0] * b_v[:,0])
+    e_count = p * q1 * q2 * sum(a_v[:,0] *  b_v[:,0])
+
+    estimate = (e_sum**2 / e_count**2) * (a - b + c)
     return estimate
 
 
