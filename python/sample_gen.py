@@ -54,7 +54,7 @@ def estimate_variance(a_v, b_v, mu_v, var_v, p):
     a = a1 + a2 + a3 + a4;
 
 #   % calculate 'b'
-    b_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0]) / sum(a_v[:,0] * b_v[:,0])
+    b_common = sum(a_v[:,0] * mu_v[:,0] * b_v[:,0]) * sum(a_v[:,0] * b_v[:,0])
     b1 =  ((1-q2) / (p*q2))* sum(a_v[:,1] * mu_v[:,0] * b_v[:,0]) / b_common;
     b2 =  ((1-q1) / (p*q1)) * sum(a_v[:,0] * mu_v[:,0] * b_v[:,1]) / b_common
     b3 =  ((1-q1)*(1-q2) / (p*q1*q2)) * (1 / sum(a_v[:,0] * b_v[:,0]))
@@ -72,7 +72,7 @@ def estimate_variance(a_v, b_v, mu_v, var_v, p):
     e_sum = p * q1 * q2 * sum(a_v[:,0] * mu_v[:,0] * b_v[:,0])
     e_count = p * q1 * q2 * sum(a_v[:,0] *  b_v[:,0])
 
-    estimate = (e_sum**2 / e_count**2) * (a - b + c)
+    estimate = (e_sum**2 / e_count**2) * (a + c)
     return estimate
 
 
@@ -2902,7 +2902,8 @@ def create_cent_stratified_sample_pair_from_impala(host,
                                                    T2_join_col,
                                                    sample_schema,
                                                    agg_type,
-                                                   K,
+                                                   key_t,
+                                                   row_t,
                                                    num_sample,
                                                    overwrite=False):
     # seed the rng
@@ -2916,6 +2917,48 @@ def create_cent_stratified_sample_pair_from_impala(host,
 
     T1_join_key_count = 0
     T2_join_key_count = 0
+
+    cur.execute("SELECT MAX({0}) FROM {1}.{2}".format(
+        T1_group_col, T1_schema, T1_table))
+    res = cur.fetchone()
+    num_group = res[0]
+    g_v = np.zeros((num_group+1, 3))
+    K_major = 0
+    K_minor = 0
+    N_major = 0
+    N_minor = 0
+    major_group = []
+    minor_group = []
+    cur.execute("SELECT {3}, COUNT(*), COUNT(DISTINCT {0}) FROM {1}.{2} GROUP BY {3} ".format(
+        T1_join_col, T1_schema, T1_table, T1_group_col))
+    while True:
+        results = cur.fetchmany(fetch_size)
+        if not results:
+            break
+
+        for row in results:
+            col1 = row[0]
+            cnt = row[1]
+            cnt2 = row[2]
+            g_v[col1, 0] = cnt
+            g_v[col1, 1] = cnt2 
+            if cnt2 >= key_t:
+                K_major = K_major + 1
+                N_major = N_major + cnt
+                major_group.append(col1)
+            else:
+                K_minor = K_minor + 1
+                N_minor = N_minor + cnt
+                minor_group.append(col1)
+
+    print((K_major, K_minor, N_major, N_minor))
+    # check budget
+    if row_t * K_major > e1 * N_major:
+        print("Budget for majority exceeded")
+        return
+    if row_t * K_minor > e1 * N_minor:
+        print("Budget for minority exceeded")
+        return
 
     # get # of of join keys in each table
     T1_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
@@ -2956,50 +2999,28 @@ def create_cent_stratified_sample_pair_from_impala(host,
 
     keys = np.arange(1, num_keys + 1)
 
-    cur = conn.cursor()
-    cur.execute("SELECT MIN({0}), MAX({0}) FROM {1}.{2}".format(
-        T1_group_col, T1_schema, T1_table))
-    row = cur.fetchone()
-    start_val = row[0]
-    end_val = row[1]
+    # calculate left-over budget
+    e_left_major = (e1 * N_major - row_t * K_major) / N_major
+    e_left_minor = (e1 * N_minor - row_t * K_minor) / N_minor
 
     val1 = 0
     val2 = 0
     ratio = 1
 
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM {}.{}".format(T1_schema, T1_table))
-    row = cur.fetchone()
-    T1_total = row[0]
-    cur.close()
+    for i in range(0, num_group + 1):
+        if i in major_group:
+            g_v[i,2] = (row_t / g_v[i, 0]) + e_left_major
+        elif i in minor_group:
+            g_v[i,2] = (row_t / g_v[i, 0]) + e_left_minor
+        else:
+            continue
 
-    cur = conn.cursor()
-    group_info = []
-    group_info_map = {}
-    grp_cnt_table = "grp__{}__{}__{}".format(T1_table, T1_group_col, K)
-    random_str = hashlib.md5(str(uuid.uuid1().bytes).encode()).hexdigest()[:32]
-    grp_cnt_temp = "grp_temp_" + random_str
-
-    # create temp table to store group info
-    cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
-    sql = "CREATE TABLE IF NOT EXISTS {}.{} (groupid INT, all_sampled INT, p DOUBLE, q DOUBLE)".format(
-        sample_schema, grp_cnt_temp)
-    cur.execute(sql)
-
-    for group_val in range(start_val, end_val + 1):
         a_v = np.zeros((num_keys, 2))
         mu_v = np.zeros((num_keys, 2))
         var_v = np.zeros((num_keys, 2))
-        grp_cnt = 0
 
-        T1_group_by_count_sql = """
-        select {5}, count(*) as cnt, avg({4}), variance({4}), avg(group_cnt) from
-        (select *, count(*) over (partition by {2}) as group_cnt from {0}.{1}) tmp
-        where {2} = {3}
-        group by {5}
-        order by {5}
-        """.format(T1_schema, T1_table, T1_group_col, group_val, T1_agg_col,
-                   T1_join_col)
+        T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}) FROM {2}.{3} WHERE {4} = {5} GROUP BY {0};
+        """.format(T1_join_col, T1_agg_col, T1_schema, T1_table, T1_group_col, i)
         cur.execute(T1_group_by_count_sql)
 
         while True:
@@ -3012,50 +3033,30 @@ def create_cent_stratified_sample_pair_from_impala(host,
                 cnt = row[1]
                 mean = row[2]
                 var = row[3]
-                grp = row[4]
                 a_v[col1 - 1, 0] = cnt
                 mu_v[col1 - 1, 0] = mean
                 if var is None:
                     var = 0
                 var_v[col1 - 1, 0] = var
-                grp_cnt = grp
         a_v[:, 1] = a_v[:, 0]**2
         mu_v[:, 1] = mu_v[:, 0]**2
-
-        if grp_cnt <= K:
-            is_sample_all = True
-            group_info.append((group_val, True))
-            group_info_map[group_val] = True
-        else:
-            is_sample_all = False
-            group_info.append((group_val, False))
-            group_info_map[group_val] = False
-
-        p = 0
+        mu_v = np.nan_to_num(mu_v)
+        var_v = np.nan_to_num(var_v)
 
         if agg_type == 'count':
-            if is_sample_all:
-                sum1 = sum(a_v[:, 1] * b_v[:, 1] - a_v[:, 1] * b_v[:, 0])
-                sum2 = 0
-            else:
-                sum1 = sum(a_v[:, 1] * b_v[:, 1] - a_v[:, 1] * b_v[:, 0] -
-                           a_v[:, 0] * b_v[:, 1] + a_v[:, 0] * b_v[:, 0])
-                sum2 = sum(a_v[:, 0] * b_v[:, 0])
+            sum1 = sum(a_v[:, 1] * b_v[:, 1] - a_v[:, 1] * b_v[:, 0] -
+                       a_v[:, 0] * b_v[:, 1] + a_v[:, 0] * b_v[:, 0])
+            sum2 = sum(a_v[:, 0] * b_v[:, 0])
             val1 = val1 + (ratio * e1 * e2 * sum1)
-            val2 = val2 + (ratio * e1 * e2 * sum2)
+            val2 = val2 + (ratio * sum2)
         elif agg_type == 'sum':
             sum1 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
             sum2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0])
-            if is_sample_all:
-                sum3 = 0
-                sum4 = 0
-                sum5 = 0
-            else:
-                sum3 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
-                sum4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
-                sum5 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+            sum3 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
+            sum4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+            sum5 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
             val1 = val1 + ratio * e1 * e2 * (sum1 - sum2 - sum3 + sum4)
-            val2 = val2 + ratio * e1 * e2 * sum5
+            val2 = val2 + ratio * sum5
         elif agg_type == 'avg':
             A_denom = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])**2
             A1 = sum(a_v[:, 0] *
@@ -3063,10 +3064,7 @@ def create_cent_stratified_sample_pair_from_impala(host,
             A2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / A_denom
             A3 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0]) / A_denom
             A4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
-            if is_sample_all:
-                A = A2 - A3
-            else:
-                A = A1 + A2 - A3 - A4
+            A = A1 + A2 - A3 - A4
 
             B_denom = sum(a_v[:, 0] * b_v[:, 0]) * sum(
                 a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])
@@ -3074,31 +3072,21 @@ def create_cent_stratified_sample_pair_from_impala(host,
             B2 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 1]) / B_denom
             B3 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 0]) / B_denom
             B4 = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 1]) / B_denom
-            if is_sample_all:
-                B = B2 - B3
-            else:
-                B = B1 + B2 - B3 - B4
+            B = B1 + B2 - B3 - B4
 
             C_denom = sum(a_v[:, 0] * b_v[:, 0])**2
             C1 = sum(a_v[:, 0] * b_v[:, 0]) / C_denom
             C2 = sum(a_v[:, 1] * b_v[:, 1]) / C_denom
             C3 = sum(a_v[:, 1] * b_v[:, 0]) / C_denom
             C4 = sum(a_v[:, 0] * b_v[:, 1]) / C_denom
-            if is_sample_all:
-                C = C2 - C3
-            else:
-                C = C1 + C2 - C3 - C4
+            C = C1 + C2 - C3 - C4
 
-            if is_sample_all:
-                D = 0
-            else:
-                D = (1 / e1 * e2) * (A1 - 2 * B1 + C1)
-
+            D = (1 / e1 * e2) * (A1 - 2 * B1 + C1)
             v1 = A - (2 * B) + C
             v2 = D
 
-            val1 = val1 + (ratio * e1 * e2 * v1)
-            val2 = val2 + (ratio * e1 * e2 * v2)
+            val1 = val1 + (ratio * v1)
+            val2 = val2 + (ratio * v2)
         else:
             print("Unsupported operation")
             return
@@ -3119,105 +3107,92 @@ def create_cent_stratified_sample_pair_from_impala(host,
             p = p_minus
         else:
             p = p_plus
+    
+    print(g_v)
+    print(p)
 
-    q1 = e1 / p
-    q2 = e2 / p
+    # hash_num = np.random.randint(1000 * 1000 * 1000)
+    # for i in range(1, num_sample + 1):
+    #     S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}__{}".format(
+    #         T1_table, T2_table, T1_join_col, T1_agg_col, T1_group_col,
+    #         agg_type, K, i, 1)
+    #     S2_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
+    #         T1_table, T2_table, T2_join_col, agg_type, K, i, 2)
 
-    cur = conn.cursor()
-    for info in group_info:
-        group_id = info[0]
-        is_all_sample = info[1]
-        if is_all_sample:
-            all_sampled = 1
-        else:
-            all_sampled = 0
-        cur.execute("""
-        INSERT INTO TABLE {}.{} VALUES ({}, {}, {}, {})
-        """.format(sample_schema, grp_cnt_temp, group_id, all_sampled, p, q1))
+    #     if overwrite:
+    #         cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+    #             sample_schema, S1_name))
+    #         cur.execute("DROP TABLE IF EXISTS {}.{}".format(
+    #             sample_schema, S2_name))
+    #         conn.commit()
 
-    hash_num = np.random.randint(1000 * 1000 * 1000)
+    #     # create tables first for S1
+    #     create_S1 = """
+    #     CREATE TABLE IF NOT EXISTS {}.{} LIKE {}.{} STORED AS PARQUET
+    #     """.format(sample_schema, S1_name, T1_schema, T1_table)
+    #     cur.execute(create_S1)
+    #     # add pval, qval columns
+    #     add_column_S1 = """
+    #     ALTER TABLE {}.{} ADD COLUMNS (qval DOUBLE, pval BIGINT)
+    #     """.format(sample_schema, S1_name)
+    #     cur.execute(add_column_S1)
 
-    for i in range(1, num_sample + 1):
-        S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}__{}".format(
-            T1_table, T2_table, T1_join_col, T1_agg_col, T1_group_col,
-            agg_type, K, i, 1)
-        S2_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
-            T1_table, T2_table, T2_join_col, agg_type, K, i, 2)
+    #     # sample data per group
+    #     for group_val in range(start_val, end_val + 1):
+    #         all_sample = group_info_map[group_val]
+    #         if all_sample:
+    #             sql = """
+    #                 INSERT INTO TABLE {0}.{1} SELECT *, 1 as qval, 0 as pval
+    #                 FROM {2}.{3} WHERE {4} = {5}
+    #             """.format(sample_schema, S1_name, T1_schema, T1_table,
+    #                        T1_group_col, group_val)
+    #         else:
+    #             sql = """INSERT INTO TABLE {0}.{1} SELECT * FROM (
+    #             SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+    #             FROM {2}.{3} WHERE {8} = {9}
+    #             ) tmp
+    #             WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+    #             """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
+    #                        hash_num + i, T1_join_col, T1_group_col, group_val)
+    #         cur.execute(sql)
 
-        if overwrite:
-            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
-                sample_schema, S1_name))
-            cur.execute("DROP TABLE IF EXISTS {}.{}".format(
-                sample_schema, S2_name))
-            conn.commit()
+    #     # sample S2 as usual
+    #     create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+    #     SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
+    #     FROM {2}.{3}
+    #     ) tmp
+    #     WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
+    #     """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
+    #                hash_num + i, T2_join_col)
 
-        # create tables first for S1
-        create_S1 = """
-        CREATE TABLE IF NOT EXISTS {}.{} LIKE {}.{} STORED AS PARQUET
-        """.format(sample_schema, S1_name, T1_schema, T1_table)
-        cur.execute(create_S1)
-        # add pval, qval columns
-        add_column_S1 = """
-        ALTER TABLE {}.{} ADD COLUMNS (qval DOUBLE, pval BIGINT)
-        """.format(sample_schema, S1_name)
-        cur.execute(add_column_S1)
+    #     cur.execute(create_S2_sql)
+    #     conn.commit()
 
-        # sample data per group
-        for group_val in range(start_val, end_val + 1):
-            all_sample = group_info_map[group_val]
-            if all_sample:
-                sql = """
-                    INSERT INTO TABLE {0}.{1} SELECT *, 1 as qval, 0 as pval
-                    FROM {2}.{3} WHERE {4} = {5}
-                """.format(sample_schema, S1_name, T1_schema, T1_table,
-                           T1_group_col, group_val)
-            else:
-                sql = """INSERT INTO TABLE {0}.{1} SELECT * FROM (
-                SELECT *, rand(unix_timestamp() + {6} + 1) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
-                FROM {2}.{3} WHERE {8} = {9}
-                ) tmp
-                WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
-                """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
-                           hash_num + i, T1_join_col, T1_group_col, group_val)
-            cur.execute(sql)
+    #     cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
+    #     cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
 
-        # sample S2 as usual
-        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
-        SELECT *, rand(unix_timestamp() + {6} + 2) as qval, pmod(fnv_hash({7} + {6}), 1000*1000*1000*1000) as pval
-        FROM {2}.{3}
-        ) tmp
-        WHERE pval <= {4} * 1000*1000*1000*1000 and qval <= {5}
-        """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
-                   hash_num + i, T2_join_col)
+    # # add metadata
+    # create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
+    # t1_join_col STRING, t2_join_col STRING, t1_agg_col STRING, t1_group_col STRING,
+    # p DOUBLE, q DOUBLE, ts TIMESTAMP ) STORED AS PARQUET
+    # """.format(sample_schema)
+    # cur.execute(create_metatable_sql)
 
-        cur.execute(create_S2_sql)
-        conn.commit()
+    # create_grp_cnt_sql = """
+    #     CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM {0}.{2}
+    # """.format(sample_schema, grp_cnt_table, grp_cnt_temp)
+    # cur.execute(create_grp_cnt_sql)
+    # cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema,
+    #                                                 grp_cnt_temp))
 
-        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
-        cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
-
-    # add metadata
-    create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
-    t1_join_col STRING, t2_join_col STRING, t1_agg_col STRING, t1_group_col STRING,
-    p DOUBLE, q DOUBLE, ts TIMESTAMP ) STORED AS PARQUET
-    """.format(sample_schema)
-    cur.execute(create_metatable_sql)
-
-    create_grp_cnt_sql = """
-        CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM {0}.{2}
-    """.format(sample_schema, grp_cnt_table, grp_cnt_temp)
-    cur.execute(create_grp_cnt_sql)
-    cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema,
-                                                    grp_cnt_temp))
-
-    ts = int(time.time())
-    insert_meta = """INSERT INTO TABLE {}.meta VALUES
-    ('{}','{}','{}','{}','{}','{}','{}',{},{},now())""".format(
-        sample_schema, T1_table, T2_table, agg_type, T1_join_col, T2_join_col,
-        T1_agg_col, T1_group_col, p, q1)
-    cur.execute(insert_meta)
-    conn.commit()
-    cur.close()
+    # ts = int(time.time())
+    # insert_meta = """INSERT INTO TABLE {}.meta VALUES
+    # ('{}','{}','{}','{}','{}','{}','{}',{},{},now())""".format(
+    #     sample_schema, T1_table, T2_table, agg_type, T1_join_col, T2_join_col,
+    #     T1_agg_col, T1_group_col, p, q1)
+    # cur.execute(insert_meta)
+    # conn.commit()
+    # cur.close()
 
 
 def create_sample_pair_count_with_cond(
