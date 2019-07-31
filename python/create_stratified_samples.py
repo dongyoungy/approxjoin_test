@@ -25,11 +25,11 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 2
+num_proc = 3
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 500
-num_synthetic_samples = 1000
+num_synthetic_samples = 100
 overwrite = False
 dec_args = []
 args = []
@@ -38,26 +38,30 @@ results = []
 impala_host = "cp-18"
 impala_port = 21050
 
-# for all samples for synthetic
-for leftDist in ["normal_1"]:
+# for stratified samples for synthetic
+for leftDist in ["normal_powerlaw_1"]:
     for rightDist in ["normal_2"]:
-        args.append(
-            (
-                impala_host,
-                impala_port,
-                "synthetic_10m",
-                leftDist,
-                "col1",
-                "col2",
-                "col2",
-                "synthetic_10m",
-                rightDist,
-                "col1",
-                "synthetic_10m_all3",
-                num_synthetic_samples,
-                overwrite,
+        for agg in ["count", "sum", "avg"]:
+            args.append(
+                (
+                    impala_host,
+                    impala_port,
+                    "synthetic_10m",
+                    leftDist,
+                    "col1",
+                    "col2",
+                    "col3",
+                    "synthetic_10m",
+                    rightDist,
+                    "col1",
+                    "synthetic_10m_strat5",
+                    agg,
+                    1000000,
+                    100000,
+                    num_synthetic_samples,
+                    overwrite,
+                )
             )
-        )
 
 # for all samples for instacart
 # for leftDist in ["orders"]:
@@ -84,7 +88,7 @@ for leftDist in ["normal_1"]:
 for arg in args:
     results.append(
         pool.apply_async(
-            sg.create_cent_sample_pair_for_all_from_impala,
+            sg.create_cent_stratified_sample_pair_from_impala,
             arg,
             callback=callback_success,
             error_callback=callback_error,

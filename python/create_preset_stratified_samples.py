@@ -25,21 +25,21 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 2
+num_proc = 4
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 500
-num_synthetic_samples = 1000
+num_synthetic_samples = 100
 overwrite = False
 dec_args = []
 args = []
 results = []
 
-impala_host = "cp-18"
+impala_host = "cp-14"
 impala_port = 21050
 
-# for all samples for synthetic
-for leftDist in ["normal_1"]:
+# for stratified samples for synthetic (preset)
+for leftDist in ["normal_powerlaw_1"]:
     for rightDist in ["normal_2"]:
         args.append(
             (
@@ -48,43 +48,23 @@ for leftDist in ["normal_1"]:
                 "synthetic_10m",
                 leftDist,
                 "col1",
-                "col2",
-                "col2",
+                "col3",
                 "synthetic_10m",
                 rightDist,
                 "col1",
-                "synthetic_10m_all3",
+                "synthetic_10m_preset_strat3",
+                100000,
+                0.01,
                 num_synthetic_samples,
                 overwrite,
             )
         )
 
-# for all samples for instacart
-# for leftDist in ["orders"]:
-#     for rightDist in ["order_products"]:
-#         args.append(
-#             (
-#                 impala_host,
-#                 impala_port,
-#                 "instacart",
-#                 leftDist,
-#                 "order_id",
-#                 "days_since_prior",
-#                 "order_dow",
-#                 "instacart",
-#                 rightDist,
-#                 "order_id",
-#                 "instacart_all2",
-#                 num_synthetic_samples,
-#                 overwrite,
-#             )
-#         )
-
 # create samples
 for arg in args:
     results.append(
         pool.apply_async(
-            sg.create_cent_sample_pair_for_all_from_impala,
+            sg.create_preset_stratified_sample_pair_from_impala,
             arg,
             callback=callback_success,
             error_callback=callback_error,

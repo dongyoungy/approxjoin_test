@@ -34,7 +34,7 @@ prob.append((0.333, 0.03))
 prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
-num_proc = 4
+num_proc = 32
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 500
@@ -42,7 +42,7 @@ num_movielens_samples = 500
 num_tpch_samples = 500
 num_synthetic_samples = 500
 overwrite = False
-impala_host = "cp-4"
+impala_host = "cp-18"
 impala_port = 21050
 
 synthetic_ours = []
@@ -66,28 +66,6 @@ if overwrite:
     es.drop_result_table(conn, "tpch100g_cent_sample")
     es.drop_result_table(conn, "tpch100g_preset")
 
-# evaluate synthetic (cent)
-# for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
-#     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-#         for agg in ["count", "sum", "avg"]:
-for leftDist in ["powerlaw_1"]:
-    for rightDist in ["powerlaw_2"]:
-        for agg in ["avg"]:
-            synthetic_ours.append(
-                (
-                    impala_host,
-                    impala_port,
-                    "synthetic_10m",
-                    "synthetic_10m_cent3",
-                    agg,
-                    leftDist,
-                    rightDist,
-                    num_synthetic_samples,
-                    False,
-                )
-            )
-
-"""
 # evaluate synthetic (dec)
 for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
@@ -106,20 +84,6 @@ for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
                 )
             )
 
-# evaluate instacart (cent)
-for agg in ["count", "sum", "avg"]:
-    instacart_ours.append(
-        (
-            impala_host,
-            impala_port,
-            "instacart",
-            "instacart_cent2",
-            agg,
-            num_instacart_samples,
-            False,
-        )
-    )
-
 # evaluate instacart (dec)
 for agg in ["count", "sum", "avg"]:
     instacart_ours.append(
@@ -134,35 +98,6 @@ for agg in ["count", "sum", "avg"]:
         )
     )
 
-
-# evaluate movielens (ours)
-for agg in ["count", "sum", "avg"]:
-    movielens_ours.append(
-        (
-            impala_host,
-            impala_port,
-            "movielens",
-            "movielens_cent2",
-            agg,
-            num_movielens_samples,
-            False,
-        )
-    )
-"""
-
-# # evaluate tpch (ours)
-# for agg in ["count", "sum", "avg"]:
-#     tpch_ours.append(
-#         (
-#             impala_host,
-#             impala_port,
-#             "tpch100g_parquet",
-#             "tpch100g_cent2",
-#             agg,
-#             num_tpch_samples,
-#             False,
-#         )
-#     )
 
 # run
 results = []

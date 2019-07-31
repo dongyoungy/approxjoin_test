@@ -34,13 +34,17 @@ prob.append((0.333, 0.03))
 prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
-num_proc = 4
+# prob.append((0.1, 0.1))
+#  prob.append((0.05, 0.2))
+#  prob.append((0.2, 0.05))
+
+num_proc = 32
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 500
 num_movielens_samples = 500
 num_tpch_samples = 500
-num_synthetic_samples = 500
+num_synthetic_samples = 1000
 overwrite = False
 impala_host = "cp-4"
 impala_port = 21050
@@ -67,18 +71,15 @@ if overwrite:
     es.drop_result_table(conn, "tpch100g_preset")
 
 # evaluate synthetic (cent)
-# for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
-#     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-#         for agg in ["count", "sum", "avg"]:
 for leftDist in ["powerlaw_1"]:
-    for rightDist in ["powerlaw_2"]:
+    for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
         for agg in ["avg"]:
             synthetic_ours.append(
                 (
                     impala_host,
                     impala_port,
                     "synthetic_10m",
-                    "synthetic_10m_cent3",
+                    "synthetic_10m_cent2",
                     agg,
                     leftDist,
                     rightDist,
@@ -87,82 +88,64 @@ for leftDist in ["powerlaw_1"]:
                 )
             )
 
-"""
-# evaluate synthetic (dec)
-for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
+# evaluate synthetic (preset)
+for leftDist in ["powerlaw_1"]:
     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-        for agg in ["count", "sum", "avg"]:
-            synthetic_ours.append(
-                (
-                    impala_host,
-                    impala_port,
-                    "synthetic_10m",
-                    "synthetic_10m_dec2",
-                    agg,
-                    leftDist,
-                    rightDist,
-                    num_synthetic_samples,
-                    False,
+        for agg in ["avg"]:
+            for p in prob:
+                synthetic_preset.append(
+                    (
+                        impala_host,
+                        impala_port,
+                        "synthetic_10m",
+                        "synthetic_10m_preset2",
+                        agg,
+                        leftDist,
+                        rightDist,
+                        p[0],
+                        p[1],
+                        num_synthetic_samples,
+                        False,
+                    )
                 )
-            )
 
-# evaluate instacart (cent)
-for agg in ["count", "sum", "avg"]:
-    instacart_ours.append(
-        (
-            impala_host,
-            impala_port,
-            "instacart",
-            "instacart_cent2",
-            agg,
-            num_instacart_samples,
-            False,
-        )
-    )
+# # evaluate instacart (cent)
+# for agg in ['count', 'sum', 'avg']:
+#     instacart_ours.append(
+#         (impala_host, impala_port, 'instacart', 'instacart_cent2',
+#          agg, num_instacart_samples, False))
 
-# evaluate instacart (dec)
-for agg in ["count", "sum", "avg"]:
-    instacart_ours.append(
-        (
-            impala_host,
-            impala_port,
-            "instacart",
-            "instacart_dec2",
-            agg,
-            num_instacart_samples,
-            False,
-        )
-    )
+# # evaluate instacart (preset)
+# for agg in ['count', 'sum', 'avg']:
+#     for p in prob:
+#         instacart_preset.append(
+#             (impala_host, impala_port, 'instacart', 'instacart_preset2',
+#              agg, p[0], p[1], num_instacart_samples, False))
 
+# # evaluate movielens (ours)
+# for agg in ['count', 'sum', 'avg']:
+#     movielens_ours.append(
+#         (impala_host, impala_port, 'movielens', 'movielens_cent2',
+#          agg, num_movielens_samples, False))
 
-# evaluate movielens (ours)
-for agg in ["count", "sum", "avg"]:
-    movielens_ours.append(
-        (
-            impala_host,
-            impala_port,
-            "movielens",
-            "movielens_cent2",
-            agg,
-            num_movielens_samples,
-            False,
-        )
-    )
-"""
-
+# # evaluate movielens (preset)
+# for agg in ['count', 'sum', 'avg']:
+#     for p in prob:
+#         movielens_preset.append(
+#             (impala_host, impala_port, 'movielens', 'movielens_preset2',
+#              agg, p[0], p[1], num_movielens_samples, False))
 # # evaluate tpch (ours)
-# for agg in ["count", "sum", "avg"]:
+# for agg in ['count', 'sum', 'avg']:
 #     tpch_ours.append(
-#         (
-#             impala_host,
-#             impala_port,
-#             "tpch100g_parquet",
-#             "tpch100g_cent2",
-#             agg,
-#             num_tpch_samples,
-#             False,
-#         )
-#     )
+#         (impala_host, impala_port, 'tpch100g_parquet',
+#          'tpch100g_cent2', agg, num_tpch_samples, False))
+
+# # evaluate tpch (preset)
+# for agg in ['count', 'sum', 'avg']:
+#     for p in prob:
+#         tpch_preset.append(
+#             (impala_host, impala_port, 'tpch100g_parquet',
+#              'tpch100g_preset2', agg, p[0], p[1], num_tpch_samples, False))
 
 # run
 results = []
@@ -170,6 +153,15 @@ for arg in synthetic_ours:
     results.append(
         pool.apply_async(
             es.run_synthetic_ours,
+            arg,
+            callback=callback_success,
+            error_callback=callback_error,
+        )
+    )
+for arg in synthetic_preset:
+    results.append(
+        pool.apply_async(
+            es.run_synthetic_preset,
             arg,
             callback=callback_success,
             error_callback=callback_error,
@@ -184,6 +176,15 @@ for arg in instacart_ours:
             error_callback=callback_error,
         )
     )
+for arg in instacart_preset:
+    results.append(
+        pool.apply_async(
+            es.run_instacart_preset,
+            arg,
+            callback=callback_success,
+            error_callback=callback_error,
+        )
+    )
 for arg in movielens_ours:
     results.append(
         pool.apply_async(
@@ -193,10 +194,28 @@ for arg in movielens_ours:
             error_callback=callback_error,
         )
     )
+for arg in movielens_preset:
+    results.append(
+        pool.apply_async(
+            es.run_movielens_preset,
+            arg,
+            callback=callback_success,
+            error_callback=callback_error,
+        )
+    )
 for arg in tpch_ours:
     results.append(
         pool.apply_async(
             es.run_tpch_ours,
+            arg,
+            callback=callback_success,
+            error_callback=callback_error,
+        )
+    )
+for arg in tpch_preset:
+    results.append(
+        pool.apply_async(
+            es.run_tpch_preset,
             arg,
             callback=callback_success,
             error_callback=callback_error,

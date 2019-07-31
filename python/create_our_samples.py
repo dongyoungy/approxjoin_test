@@ -25,13 +25,13 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 32
+num_proc = 9
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
-num_instacart_samples = 500
-num_movielens_samples = 500
+# num_instacart_samples = 500
+# num_movielens_samples = 500
 num_tpch100g_samples = 500
-num_synthetic_samples = 500
+num_synthetic_samples = 1
 overwrite = False
 dec_args = []
 args = []
@@ -48,6 +48,7 @@ impala_host = "cp-4"
 impala_port = 21050
 
 # samples for instacart queries
+"""
 args.append(
     (
         impala_host,
@@ -158,11 +159,16 @@ args.append(
         overwrite,
     )
 )
+"""
 
 # cent samples for synthetic
+# for leftDist in ["powerlaw_1"]:
+# for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
+#     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
+# for agg in ["count", "sum", "avg"]:
 for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-        for agg in ["count", "sum", "avg"]:
+        for agg in ["avg"]:
             args.append(
                 (
                     impala_host,
@@ -175,7 +181,7 @@ for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
                     rightDist,
                     "col1",
                     None,
-                    "synthetic_10m_cent2",
+                    "synthetic_10m_cent3",
                     agg,
                     num_synthetic_samples,
                     overwrite,
@@ -188,82 +194,82 @@ for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
         dists.append((leftDist, rightDist))
 
-for dist in dists:
-    for agg in ["count", "sum", "avg"]:
-        dec_args.append(
-            (
-                "cp-4",
-                impala_port,
-                "synthetic_10m",
-                dist[0],
-                "col1",
-                "col2",
-                "synthetic_10m",
-                dist[1],
-                "col1",
-                None,
-                "synthetic_10m_dec2",
-                agg,
-                num_synthetic_samples,
-                overwrite,
-            )
-        )
+# for dist in dists:
+#     for agg in ["count", "sum", "avg"]:
+#         dec_args.append(
+#             (
+#                 "cp-4",
+#                 impala_port,
+#                 "synthetic_10m",
+#                 dist[0],
+#                 "col1",
+#                 "col2",
+#                 "synthetic_10m",
+#                 dist[1],
+#                 "col1",
+#                 None,
+#                 "synthetic_10m_dec2",
+#                 agg,
+#                 num_synthetic_samples,
+#                 overwrite,
+#             )
+#         )
 
 # dec samples for instacart queries
-dec_args.append(
-    (
-        impala_host,
-        impala_port,
-        "instacart",
-        "orders",
-        "order_id",
-        "order_hour_of_day",
-        "instacart",
-        "order_products",
-        "order_id",
-        None,
-        "instacart_dec2",
-        "count",
-        num_instacart_samples,
-        overwrite,
-    )
-)
-dec_args.append(
-    (
-        impala_host,
-        impala_port,
-        "instacart",
-        "orders",
-        "order_id",
-        "days_since_prior",
-        "instacart",
-        "order_products",
-        "order_id",
-        None,
-        "instacart_dec2",
-        "sum",
-        num_instacart_samples,
-        overwrite,
-    )
-)
-dec_args.append(
-    (
-        impala_host,
-        impala_port,
-        "instacart",
-        "orders",
-        "order_id",
-        "order_dow",
-        "instacart",
-        "order_products",
-        "order_id",
-        None,
-        "instacart_dec2",
-        "avg",
-        num_instacart_samples,
-        overwrite,
-    )
-)
+# dec_args.append(
+#     (
+#         impala_host,
+#         impala_port,
+#         "instacart",
+#         "orders",
+#         "order_id",
+#         "order_hour_of_day",
+#         "instacart",
+#         "order_products",
+#         "order_id",
+#         None,
+#         "instacart_dec2",
+#         "count",
+#         num_instacart_samples,
+#         overwrite,
+#     )
+# )
+# dec_args.append(
+#     (
+#         impala_host,
+#         impala_port,
+#         "instacart",
+#         "orders",
+#         "order_id",
+#         "days_since_prior",
+#         "instacart",
+#         "order_products",
+#         "order_id",
+#         None,
+#         "instacart_dec2",
+#         "sum",
+#         num_instacart_samples,
+#         overwrite,
+#     )
+# )
+# dec_args.append(
+#     (
+#         impala_host,
+#         impala_port,
+#         "instacart",
+#         "orders",
+#         "order_id",
+#         "order_dow",
+#         "instacart",
+#         "order_products",
+#         "order_id",
+#         None,
+#         "instacart_dec2",
+#         "avg",
+#         num_instacart_samples,
+#         overwrite,
+#     )
+# )
 
 # create samples
 for arg in args:
@@ -290,60 +296,60 @@ pool.join()
 
 tpch_args = []
 # samples for tpch100g queries
-tpch_args.append(
-    (
-        impala_host,
-        impala_port,
-        "tpch100g_parquet",
-        "lineitem",
-        "l_orderkey",
-        "l_quantity",
-        "tpch100g_parquet",
-        "orders",
-        "o_orderkey",
-        None,
-        "tpch100g_cent2",
-        "count",
-        num_tpch100g_samples,
-        overwrite,
-    )
-)
-tpch_args.append(
-    (
-        impala_host,
-        impala_port,
-        "tpch100g_parquet",
-        "lineitem",
-        "l_orderkey",
-        "l_quantity",
-        "tpch100g_parquet",
-        "orders",
-        "o_orderkey",
-        None,
-        "tpch100g_cent2",
-        "sum",
-        num_tpch100g_samples,
-        overwrite,
-    )
-)
-tpch_args.append(
-    (
-        impala_host,
-        impala_port,
-        "tpch100g_parquet",
-        "lineitem",
-        "l_orderkey",
-        "l_extendedprice",
-        "tpch100g_parquet",
-        "orders",
-        "o_orderkey",
-        None,
-        "tpch100g_cent2",
-        "avg",
-        num_tpch100g_samples,
-        overwrite,
-    )
-)
+# tpch_args.append(
+#     (
+#         impala_host,
+#         impala_port,
+#         "tpch100g_parquet",
+#         "lineitem",
+#         "l_orderkey",
+#         "l_quantity",
+#         "tpch100g_parquet",
+#         "orders",
+#         "o_orderkey",
+#         None,
+#         "tpch100g_cent2",
+#         "count",
+#         num_tpch100g_samples,
+#         overwrite,
+#     )
+# )
+# tpch_args.append(
+#     (
+#         impala_host,
+#         impala_port,
+#         "tpch100g_parquet",
+#         "lineitem",
+#         "l_orderkey",
+#         "l_quantity",
+#         "tpch100g_parquet",
+#         "orders",
+#         "o_orderkey",
+#         None,
+#         "tpch100g_cent2",
+#         "sum",
+#         num_tpch100g_samples,
+#         overwrite,
+#     )
+# )
+# tpch_args.append(
+#     (
+#         impala_host,
+#         impala_port,
+#         "tpch100g_parquet",
+#         "lineitem",
+#         "l_orderkey",
+#         "l_extendedprice",
+#         "tpch100g_parquet",
+#         "orders",
+#         "o_orderkey",
+#         None,
+#         "tpch100g_cent2",
+#         "avg",
+#         num_tpch100g_samples,
+#         overwrite,
+#     )
+# )
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 

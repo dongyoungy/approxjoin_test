@@ -8,15 +8,16 @@ num_proc = 3
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 
 #  for dist in ['uniform', 'normal', 'powerlaw']:
-for dist in ['normal']:
+for dist in ["normal"]:
     #  args.append((10 * 1000 * 1000, 1 * 1000 * 1000, dist, 1, False, True))
     #  args.append((10 * 1000 * 1000, 1 * 1000 * 1000, dist, 2, False, True))
     #  args.append((1000 * 1000,  100 * 1000, dist, 2, False, True))
     #  max_var_args.append(
     #  (100 * 1000 * 1000, 10 * 1000 * 1000, dist, False, True))
-    for rel in ['powerlaw']:
+    for rel in ["powerlaw"]:
         where_args.append(
-            (100 *1000 * 1000, 10* 1000 * 1000, dist, rel, 100, 1, False, True))
+            (100 * 1000 * 1000, 10 * 1000 * 1000, dist, rel, 10, 1, False, True)
+        )
         #  dg.create_table_data_for_where(10 * 1000 * 1000, 1 * 1000 * 1000, dist,
         #  rel, 10, 1, False, True)
         #  dg.create_table_data_for_where(10 * 1000 * 1000, 10 * 1000 * 1000,
