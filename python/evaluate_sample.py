@@ -1371,7 +1371,7 @@ def run_synthetic_stratified_preset(
         cur = conn.cursor()
         if query_type == "count":  # count
             estimate_sql = """
-            select col3 as grp, c * (n/k) * (1/q) as estimate from
+            select col3 as grp, case when col3 <= 2 then c * (1/(q*q)) else c * (n/k) * (1/q) end as estimate from
             (select t1.col3 as col3, count(*) c, sum(t1.col2) as s from
             {0}.{1} t1 join
             {0}.{2} t2 on t1.col1 = t2.col1
@@ -1392,7 +1392,7 @@ def run_synthetic_stratified_preset(
 
         elif query_type == "sum":  # sum
             estimate_sql = """
-            select col3 as grp, s * (n/k) * (1/q) as estimate from
+            select col3 as grp, case when col3 <= 2 then s * (1/(q*q)) else s * (n/k) * (1/q) end as estimate from
             (select t1.col3 as col3, count(*) c, sum(t1.col2) as s from
             {0}.{1} t1 join
             {0}.{2} t2 on t1.col1 = t2.col1

@@ -41,7 +41,7 @@ impala_port = 21050
 # for stratified samples for synthetic
 for leftDist in ["normal_powerlaw_1"]:
     for rightDist in ["normal_2"]:
-        for agg in ["count", "sum", "avg"]:
+        for agg in ["count", "sum"]:
             args.append(
                 (
                     impala_host,
@@ -54,7 +54,7 @@ for leftDist in ["normal_powerlaw_1"]:
                     "synthetic_10m",
                     rightDist,
                     "col1",
-                    "synthetic_10m_strat5",
+                    "synthetic_10m_strat6",
                     agg,
                     1000000,
                     100000,

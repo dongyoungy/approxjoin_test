@@ -1499,7 +1499,7 @@ def create_preset_stratified_sample_pair_from_impala(
             SELECT *, rand(unix_timestamp() + {6} + 1) rnd
             FROM {2}.{3}
             ) tmp ) tmp2
-            WHERE rn <= {4};
+            WHERE (col3 > 2 and rn <= {4}) or (col3 <= 2 and rand(unix_timestamp() + {6} + 2) <= 0.01)
         """.format(
             target_schema,  # 0
             S1_name,  # 1
@@ -1543,6 +1543,129 @@ def create_preset_stratified_sample_pair_from_impala(
         conn.commit()
         #  cur.execute("COMPUTE STATS {}.{}".format(target_schema, S1_name))
         #  cur.execute("COMPUTE STATS {}.{}".format(target_schema, S2_name))
+
+
+def create_preset_stratified_sample_pair_from_impala_individual(
+    host,
+    port,
+    T1_schema,
+    T1_table,
+    T1_join_col,
+    T1_group_col,
+    T2_schema,
+    T2_table,
+    T2_join_col,
+    target_schema,
+    K,
+    q,
+    num_sample,
+    i,
+    overwrite=False,
+):
+    # seed the rng
+    hash_val = int(hashlib.sha1(str(uuid.uuid1().bytes).encode()).hexdigest(), 16) % (
+        10 ** 8
+    )
+    np.random.seed(int(time.time()) + hash_val)
+    conn = impaladb.connect(host, port)
+    cur = conn.cursor()
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(target_schema))
+
+    group_info_table = "{}__{}__groupinfo".format(T1_table, T2_table)
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS {}.{} (groupid INT, K BIGINT, N BIGINT, q DOUBLE,ts TIMESTAMP) STORED AS PARQUET
+    """.format(
+            target_schema, group_info_table
+        )
+    )
+
+    cur.execute(
+        "SELECT {2}, COUNT(*) FROM {0}.{1} GROUP BY {2} ".format(
+            T1_schema, T1_table, T1_group_col
+        )
+    )
+
+    cur2 = conn.cursor()
+    while True:
+        results = cur.fetchmany(fetch_size)
+        if not results:
+            break
+
+        for row in results:
+            cur2.execute(
+                """INSERT INTO TABLE {}.{} VALUES ({}, {}, {}, {}, now())
+            """.format(
+                    target_schema, group_info_table, row[0], K, row[1], q
+                )
+            )
+
+    tables = get_existing_tables(conn, target_schema)
+    m = 1540483477
+    modval = 2 ** 32
+
+    hash_num = np.random.randint(1000 * 1000)
+    S1_name = "s__{}__{}__{}K__{:.3f}q_{}_{}".format(T1_table, T2_table, K, q, i, 1)
+    S2_name = "s__{}__{}__{}K__{:.3f}q_{}_{}".format(T1_table, T2_table, K, q, i, 2)
+    S1_name = S1_name.replace(".", "_")
+    S2_name = S2_name.replace(".", "_")
+
+    if overwrite:
+        cur.execute("DROP TABLE IF EXISTS {}.{}".format(target_schema, S1_name))
+        cur.execute("DROP TABLE IF EXISTS {}.{}".format(target_schema, S2_name))
+        conn.commit()
+    else:
+        if S1_name in tables and S2_name in tables:
+            return
+
+    create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, row_number() over (partition by {5} order by rnd) as rn FROM (
+        SELECT *, rand(unix_timestamp() + {6} + 1) rnd
+        FROM {2}.{3}
+        ) tmp ) tmp2
+        WHERE (col3 > 2 and rn <= {4}) or (col3 <= 2 and rand(unix_timestamp() + {6} + 2) <= 0.01)
+    """.format(
+        target_schema,  # 0
+        S1_name,  # 1
+        T1_schema,  # 2
+        T1_table,  # 3
+        K,  # 4
+        T1_group_col,  # 5
+        hash_num + i,  # 6
+    )
+    create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+    SELECT *
+    FROM {2}.{3}
+    ) tmp
+    WHERE rand(unix_timestamp() + {5} + 2) <= {4}
+    """.format(
+        target_schema,
+        S2_name,
+        T2_schema,
+        T2_table,
+        q,
+        hash_num + i,
+    )
+    #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+    #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+    #  FROM {2}.{3}
+    #  ) tmp
+    #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 1) <= {5}
+    #  """.format(target_schema, S1_name, T1_schema, T1_table, p, q,
+    #  hash_num + i, T1_join_col)
+    #
+    #  create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+    #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+    #  FROM {2}.{3}
+    #  ) tmp
+    #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 2) <= {5}
+    #  """.format(target_schema, S2_name, T2_schema, T2_table, p, q,
+    #  hash_num + i, T2_join_col)
+
+    cur.execute(create_S1_sql)
+    cur.execute(create_S2_sql)
+    conn.commit()
+    #  cur.execute("COMPUTE STATS {}.{}".format(target_schema, S1_name))
+    #  cur.execute("COMPUTE STATS {}.{}".format(target_schema, S2_name))
 
 
 def create_dec_sample_pair_from_impala(
@@ -1593,16 +1716,19 @@ def create_dec_sample_pair_from_impala(
         worst_table = "powerlaw_max_var_2"
     elif T1_table == "orders":
         worst_table = "order_products"
+    elif T1_table == "lineitem":
+        worst_table = "orders"
 
-    cur = conn.cursor()
-    T2_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
-        T2_join_col, T2_schema, worst_table
-    )
-    cur.execute(T2_join_key_count_sql)
-    results = cur.fetchall()
-    for row in results:
-        T2_join_key_count = row[0]
-    cur.close()
+    # cur = conn.cursor()
+    # T2_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
+    #     T2_join_col, T2_schema, worst_table
+    # )
+    # cur.execute(T2_join_key_count_sql)
+    # results = cur.fetchall()
+    # for row in results:
+    #     T2_join_key_count = row[0]
+    # cur.close()
+    T2_join_key_count = T1_join_key_count 
 
     num_keys = max([T1_join_key_count, T2_join_key_count])
 
@@ -1680,6 +1806,7 @@ def create_dec_sample_pair_from_impala(
         results = cur.fetchall()
         for row in results:
             n_b = row[0]
+        t2 = datetime.datetime.now()
         v = np.zeros((num_keys, 3))
 
         v[:, 0] = keys
@@ -3388,6 +3515,9 @@ def create_cent_stratified_sample_pair_from_impala(
     num_sample,
     overwrite=False,
 ):
+    e1 = 0.014
+    e2 = 0.01
+
     # seed the rng
     hash_val = int(hashlib.sha1(str(uuid.uuid1().bytes).encode()).hexdigest(), 16) % (
         10 ** 8

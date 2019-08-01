@@ -25,7 +25,7 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 4
+num_proc = 20
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 500
@@ -41,30 +41,32 @@ impala_port = 21050
 # for stratified samples for synthetic (preset)
 for leftDist in ["normal_powerlaw_1"]:
     for rightDist in ["normal_2"]:
-        args.append(
-            (
-                impala_host,
-                impala_port,
-                "synthetic_10m",
-                leftDist,
-                "col1",
-                "col3",
-                "synthetic_10m",
-                rightDist,
-                "col1",
-                "synthetic_10m_preset_strat3",
-                100000,
-                0.01,
-                num_synthetic_samples,
-                overwrite,
+        for i in range(11, 101):
+            args.append(
+                (
+                    impala_host,
+                    impala_port,
+                    "synthetic_10m",
+                    leftDist,
+                    "col1",
+                    "col3",
+                    "synthetic_10m",
+                    rightDist,
+                    "col1",
+                    "synthetic_10m_preset_strat4",
+                    100000,
+                    0.01,
+                    num_synthetic_samples,
+                    i,
+                    overwrite,
+                )
             )
-        )
 
 # create samples
 for arg in args:
     results.append(
         pool.apply_async(
-            sg.create_preset_stratified_sample_pair_from_impala,
+            sg.create_preset_stratified_sample_pair_from_impala_individual,
             arg,
             callback=callback_success,
             error_callback=callback_error,

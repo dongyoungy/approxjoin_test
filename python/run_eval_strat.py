@@ -73,7 +73,7 @@ for agg in ["count", "sum", "avg"]:
             impala_host,
             impala_port,
             "synthetic_10m",
-            "synthetic_10m_preset_strat3",
+            "synthetic_10m_preset_strat4",
             "normal_powerlaw_1",
             "normal_2",
             agg,
