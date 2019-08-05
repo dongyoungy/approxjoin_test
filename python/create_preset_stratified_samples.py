@@ -39,9 +39,9 @@ impala_host = "cp-14"
 impala_port = 21050
 
 # for stratified samples for synthetic (preset)
-for leftDist in ["normal_powerlaw_1"]:
+for leftDist in ["normal_powerlaw2_1"]:
     for rightDist in ["normal_2"]:
-        for i in range(11, 101):
+        for i in range(1, 100 + 1):
             args.append(
                 (
                     impala_host,
@@ -53,7 +53,7 @@ for leftDist in ["normal_powerlaw_1"]:
                     "synthetic_10m",
                     rightDist,
                     "col1",
-                    "synthetic_10m_preset_strat4",
+                    "synthetic_10m_preset_strat5",
                     100000,
                     0.01,
                     num_synthetic_samples,

@@ -40,7 +40,7 @@ pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 100
 num_synthetic_samples = 100
 overwrite = False
-impala_host = "cp-18"
+impala_host = "cp-10"
 impala_port = 21050
 
 synthetic_ours = []
@@ -58,14 +58,14 @@ for agg in ["count", "sum", "avg"]:
             impala_host,
             impala_port,
             "synthetic_10m",
-            "new_st_test2",
+            "synthetic_10m_strat_new",
             "normal_powerlaw2_1",
             "normal_2",
             agg,
             e1,
             e2,
-            10000,
-            100000,
+            1000,
+            10,
             num_synthetic_samples,
             False,
         )

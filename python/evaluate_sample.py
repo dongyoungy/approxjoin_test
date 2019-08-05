@@ -41,7 +41,7 @@ def create_strat_result_table(conn, schema):
     cur = conn.cursor()
     create_result_table_sql = """CREATE TABLE IF NOT EXISTS {}.strat_results
     (query STRING, idx INT, left_dist STRING,
-    right_dist STRING, groupid INT,
+    right_dist STRING, e1 DOUBLE, e2 DOUBLE, key_t BIGINT, row_t BIGINT, groupid INT,
     actual DOUBLE, estimate DOUBLE, ts TIMESTAMP) STORED AS PARQUET
     """.format(
         schema
@@ -1105,6 +1105,7 @@ def run_synthetic_stratified_ours(
     left_dist,
     right_dist,
     query_type,
+    e1, e2,
     key_t,
     row_t,
     num_sample,
@@ -1119,11 +1120,19 @@ def run_synthetic_stratified_ours(
     # create temp table
     temp_table = create_temp_table(conn, sample_schema, 'strat_results')
 
-    actual = np.zeros((10))
-    group_info = [None] * 10
+    cur = conn.cursor()
+    sql = """
+    SELECT count(distinct col3) FROM {0}.{1}
+    """.format(table_schema, left_dist)
+    cur.execute(sql)
+    res = cur.fetchone()
+
+    num_grp = res[0]
+
+    actual = np.zeros((res[0]))
+    group_info = [None] * num_grp
 
     # get actual value first
-    cur = conn.cursor()
     if query_type == "count":  # count
         actual_sql = """SELECT t1.col3, COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON t1.col1 = t2.col1 GROUP BY t1.col3""".format(
             table_schema, left_dist, right_dist
@@ -1156,8 +1165,9 @@ def run_synthetic_stratified_ours(
     # get start idx
     cur = conn.cursor()
     sql = """SELECT max(idx) FROM {}.strat_results WHERE query = '{}' AND left_dist = '{}' AND
-    right_dist = '{}' and query = '{}' GROUP BY query, left_dist, right_dist""".format(
-        sample_schema, query_type, left_dist, right_dist, query_type
+    right_dist = '{}' and query = '{}' and e1 = {} and e2 = {} and key_t = {} and row_t = {}
+    GROUP BY query, left_dist, right_dist""".format(
+        sample_schema, query_type, left_dist, right_dist, query_type, e1, e2, key_t, row_t
     )
     cur.execute(sql)
     result = cur.fetchall()
@@ -1170,16 +1180,18 @@ def run_synthetic_stratified_ours(
     cur = conn.cursor()
     group_info_table = "{}__{}__{}__groupinfo".format(left_dist, right_dist, query_type)
     cur.execute("""
-    SELECT DISTINCT groupid, is_major, p1, q1, p2_major, q2_major, p2_minor, q2_minor FROM {}.{}
-    """.format(sample_schema, group_info_table))
+    SELECT DISTINCT groupid, is_major, p1, q1, p2_major, q2_major, p2_minor, q2_minor 
+    FROM {}.{}
+    WHERE row_t = {} AND key_t = {}
+    """.format(sample_schema, group_info_table, row_t, key_t))
     result = cur.fetchall()
     for row in result:
         group_info[row[0]] = (row[1], row[2], row[3], row[4], row[5], row[6], row[7])
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        estimates = np.zeros((10))
-        S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}__{}__{}".format(
+        estimates = np.zeros((num_grp))
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}__{}__{:.3f}__{}__{}".format(
             left_dist,
             right_dist,
             'col1',
@@ -1188,15 +1200,19 @@ def run_synthetic_stratified_ours(
             query_type,
             key_t,
             row_t,
+            e1,
             i,
             1,
         )
-        S2_major_name = "s__{}__{}__{}__{}__{}__{}__{}__{}_major".format(
-            left_dist, right_dist, 'col1', query_type, key_t, row_t, i, 2
+        S2_major_name = "s__{}__{}__{}__{}__{}__{}__{:.3f}__{}__{}_major".format(
+            left_dist, right_dist, 'col1', query_type, key_t, row_t, e2, i, 2
         )
-        S2_minor_name = "s__{}__{}__{}__{}__{}__{}__{}__{}_mijor".format(
-            left_dist, right_dist, 'col1', query_type, key_t, row_t, i, 2
+        S2_minor_name = "s__{}__{}__{}__{}__{}__{}__{:.3f}__{}__{}_minor".format(
+            left_dist, right_dist, 'col1', query_type, key_t, row_t, e2, i, 2
         )
+        S1_name = S1_name.replace(".", "_")
+        S2_major_name = S2_major_name.replace(".", "_")
+        S2_minor_name = S2_minor_name.replace(".", "_")
         cur = conn.cursor()
         if query_type == "count":  # count
             estimate_sql = """
@@ -1206,10 +1222,19 @@ def run_synthetic_stratified_ours(
             (select s1.col3 as grp, count(*) as c, sum(s1.col2) as s from
             {0}.{1} s1 join 
             {0}.{2} s2m on s1.col1 = s2m.col1
-            group by s1.col3) t1 join {0}.{3} ginfo on t1.grp = ginfo.groupid) tmp
+            group by s1.col3) t1 join {0}.{4} ginfo on t1.grp = ginfo.groupid
+            where ginfo.is_major = 1 and ginfo.key_t = {5} and ginfo.row_t = {6}
+            union
+            select grp, c * (1 / (p1 *  (case when q1 > 1 then 1 else q1 end) * q2_minor)) as estimate from
+            (select s1.col3 as grp, count(*) as c, sum(s1.col2) as s from
+            {0}.{1} s1 join 
+            {0}.{3} s2m on s1.col1 = s2m.col1
+            group by s1.col3) t1 join {0}.{4} ginfo on t1.grp = ginfo.groupid
+            where ginfo.is_major = 0 and ginfo.key_t = {5} and ginfo.row_t = {6}
+            ) tmp
             order by grp;
             """.format(
-                sample_schema, S1_name, S2_major_name, group_info_table
+                sample_schema, S1_name, S2_major_name, S2_minor_name, group_info_table, key_t, row_t
             )
             cur.execute(estimate_sql)
             result = cur.fetchall()
@@ -1226,10 +1251,19 @@ def run_synthetic_stratified_ours(
             (select s1.col3 as grp, count(*) as c, sum(s1.col2) as s from
             {0}.{1} s1 join 
             {0}.{2} s2m on s1.col1 = s2m.col1
-            group by s1.col3) t1 join {0}.{3} ginfo on t1.grp = ginfo.groupid) tmp
+            group by s1.col3) t1 join {0}.{4} ginfo on t1.grp = ginfo.groupid
+            where ginfo.is_major = 1 and ginfo.key_t = {5} and ginfo.row_t = {6}
+            union
+            select grp, s * (1 / (p1 *  (case when q1 > 1 then 1 else q1 end) * q2_minor)) as estimate from
+            (select s1.col3 as grp, count(*) as c, sum(s1.col2) as s from
+            {0}.{1} s1 join 
+            {0}.{3} s2m on s1.col1 = s2m.col1
+            group by s1.col3) t1 join {0}.{4} ginfo on t1.grp = ginfo.groupid
+            where ginfo.is_major = 0 and ginfo.key_t = {5} and ginfo.row_t = {6}
+            ) tmp
             order by grp;
             """.format(
-                sample_schema, S1_name, S2_major_name, group_info_table
+                sample_schema, S1_name, S2_major_name, S2_minor_name, group_info_table, key_t, row_t
             )
             cur.execute(estimate_sql)
             result = cur.fetchall()
@@ -1245,10 +1279,19 @@ def run_synthetic_stratified_ours(
             (select s1.col3 as grp, count(*) as c, sum(s1.col2) as s from
             {0}.{1} s1 join 
             {0}.{2} s2m on s1.col1 = s2m.col1
-            group by s1.col3) t1 join {0}.{3} ginfo on t1.grp = ginfo.groupid) tmp
+            group by s1.col3) t1 join {0}.{4} ginfo on t1.grp = ginfo.groupid
+            where ginfo.is_major = 1 and ginfo.key_t = {5} and ginfo.row_t = {6}
+            union
+            select grp, s/c as estimate from
+            (select s1.col3 as grp, count(*) as c, sum(s1.col2) as s from
+            {0}.{1} s1 join 
+            {0}.{3} s2m on s1.col1 = s2m.col1
+            group by s1.col3) t1 join {0}.{4} ginfo on t1.grp = ginfo.groupid
+            where ginfo.is_major = 0 and ginfo.key_t = {5} and ginfo.row_t = {6}
+            ) tmp
             order by grp;
             """.format(
-                sample_schema, S1_name, S2_major_name, group_info_table
+                sample_schema, S1_name, S2_major_name, S2_minor_name, group_info_table, key_t, row_t
             )
             cur.execute(estimate_sql)
             result = cur.fetchall()
@@ -1260,10 +1303,10 @@ def run_synthetic_stratified_ours(
 
         # record result
         cur = conn.cursor()
-        for grp in range(0, 10):
+        for grp in range(0, num_grp):
             if estimates[grp] != 0:
                 add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
-                '{}', {}, '{}', '{}', {}, {}, {}, now()
+                '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, {}, {}, {}, now()
                 )""".format(
                     sample_schema,
                     temp_table,
@@ -1271,6 +1314,7 @@ def run_synthetic_stratified_ours(
                     i,
                     left_dist,
                     right_dist,
+                    e1, e2, key_t, row_t,
                     grp,
                     actual[grp],
                     estimates[grp],
@@ -1371,7 +1415,7 @@ def run_synthetic_stratified_preset(
         cur = conn.cursor()
         if query_type == "count":  # count
             estimate_sql = """
-            select col3 as grp, case when col3 <= 2 then c * (1/(q*q)) else c * (n/k) * (1/q) end as estimate from
+            select col3 as grp, case when col3 < 2 then c * (1/(q*q)) else c * (n/k) * (1/q) end as estimate from
             (select t1.col3 as col3, count(*) c, sum(t1.col2) as s from
             {0}.{1} t1 join
             {0}.{2} t2 on t1.col1 = t2.col1
@@ -1392,7 +1436,7 @@ def run_synthetic_stratified_preset(
 
         elif query_type == "sum":  # sum
             estimate_sql = """
-            select col3 as grp, case when col3 <= 2 then s * (1/(q*q)) else s * (n/k) * (1/q) end as estimate from
+            select col3 as grp, case when col3 < 2 then s * (1/(q*q)) else s * (n/k) * (1/q) end as estimate from
             (select t1.col3 as col3, count(*) c, sum(t1.col2) as s from
             {0}.{1} t1 join
             {0}.{2} t2 on t1.col1 = t2.col1

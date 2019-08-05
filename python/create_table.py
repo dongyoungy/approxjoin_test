@@ -14,9 +14,9 @@ for dist in ["normal"]:
     #  args.append((1000 * 1000,  100 * 1000, dist, 2, False, True))
     #  max_var_args.append(
     #  (100 * 1000 * 1000, 10 * 1000 * 1000, dist, False, True))
-    for rel in ["powerlaw"]:
+    for rel in ["powerlaw2"]:
         where_args.append(
-            (100 * 1000 * 1000, 10 * 1000 * 1000, dist, rel, 10, 1, False, True)
+            (100 * 1000 * 1000, 10 * 1000 * 1000, dist, rel, 100, 1, False, True)
         )
         #  dg.create_table_data_for_where(10 * 1000 * 1000, 1 * 1000 * 1000, dist,
         #  rel, 10, 1, False, True)
@@ -35,5 +35,5 @@ results = pool.starmap(dg.create_max_var_table_data, max_var_args)
 #  for i in [1, 2]:
 #  dg.create_table(1000 * 1000 * 1000, 100 * 1000 * 1000, dist, i, True)
 
-pool.join()
 pool.close()
+pool.join()

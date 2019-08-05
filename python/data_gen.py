@@ -491,7 +491,7 @@ def create_table_data_for_where(
             keys = [math.floor(k) for k in keys]
 
         elif type == 'powerlaw1':
-            alpha = -1.5
+            alpha = -2.5
             minv = 1
             maxv = num_keys
             rand_keys = np.array(np.random.random(size=current_batch_size))
@@ -536,6 +536,14 @@ def create_table_data_for_where(
             val2 = val2.round().astype(int)
         elif rel_type == 'powerlaw':
             alpha = -1.5
+            minv = 1
+            maxv = num_pred_val + 1
+            rand_keys = np.array(np.random.random(size=current_batch_size))
+            val2 = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+                    minv**(alpha + 1))**(1 / (alpha + 1))
+            val2 = [math.floor(k) - 1 for k in val2]
+        elif rel_type == 'powerlaw2':
+            alpha = -2.5
             minv = 1
             maxv = num_pred_val + 1
             rand_keys = np.array(np.random.random(size=current_batch_size))
