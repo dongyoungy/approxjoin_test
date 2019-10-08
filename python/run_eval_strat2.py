@@ -34,7 +34,7 @@ prob.append((0.333, 0.03))
 prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
-num_proc = 3
+num_proc = 4
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 100
@@ -52,20 +52,42 @@ e1 = 0.03
 e2 = 0.01
 
 # evaluate synthetic (cent)
+# for key_t in [1000, 10000, 100000, 1000000]:
+#     for row_t in [10, 100]:
+#         for agg in ["count", "sum", "avg"]:
+#             synthetic_ours.append(
+#                 (
+#                     impala_host,
+#                     impala_port,
+#                     "synthetic_10m",
+#                     "old_st_test2",
+#                     "normal_powerlaw2_1",
+#                     "normal_2",
+#                     agg,
+#                     e1,
+#                     e2,
+#                     key_t,
+#                     row_t,
+#                     num_synthetic_samples,
+#                     False,
+#                 )
+#             )
+
+# evaluate synthetic (cent)
 for agg in ["count", "sum", "avg"]:
     synthetic_ours.append(
         (
             impala_host,
             impala_port,
             "synthetic_10m",
-            "synthetic_10m_strat_new",
+            "new_st_test2",
             "normal_powerlaw2_1",
             "normal_2",
             agg,
             e1,
             e2,
-            1000,
-            10,
+            10000,
+            100000,
             num_synthetic_samples,
             False,
         )

@@ -27,12 +27,20 @@ def callback_success(result):
 
 
 prob = []
-prob.append((0.01, 1))
-prob.append((0.015, 0.666))
-prob.append((0.03, 0.333))
-prob.append((0.333, 0.03))
-prob.append((0.666, 0.015))
-prob.append((1, 0.01))
+# prob.append((0.01, 1))
+# prob.append((0.015, 0.666))
+# prob.append((0.03, 0.333))
+# prob.append((0.333, 0.03))
+# prob.append((0.666, 0.015))
+# prob.append((1, 0.01))
+
+# 0.1%
+prob.append((0.001, 1))
+prob.append((0.0015, 0.666))
+prob.append((0.003, 0.333))
+prob.append((0.333, 0.003))
+prob.append((0.666, 0.0015))
+prob.append((1, 0.001))
 
 num_proc = 10
 
@@ -42,7 +50,7 @@ num_movielens_samples = 500
 num_tpch_samples = 500
 num_synthetic_samples = 500
 overwrite = False
-impala_host = "cp-18"
+impala_host = "cp-4"
 impala_port = 21050
 
 synthetic_ours = []
@@ -97,8 +105,8 @@ for agg in ["count", "sum", "avg"]:
             (
                 impala_host,
                 impala_port,
-                "tpch100g_parquet",
-                "tpch100g_preset2",
+                "tpch1000g_parquet",
+                "tpch1000g_preset1",
                 agg,
                 p[0],
                 p[1],

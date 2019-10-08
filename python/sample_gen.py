@@ -24,8 +24,9 @@ parquet_schema = "approxjoin_parquet"
 impala_host = "cp-2"
 impala_port = 21050
 fetch_size = 10000
-e1 = 0.01
-e2 = 0.01
+key_fetch_size = 10 * 1000 * 1000
+e1 = 0.001
+e2 = 0.001
 m = 1540483477
 modval = 2 ** 32
 
@@ -1382,10 +1383,10 @@ def create_preset_sample_pair_from_impala(
     for i in range(1, num_sample + 1):
         hash_num = np.random.randint(1000 * 1000)
         hash_num2 = np.random.randint(1000 * 1000)
-        S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+        S1_name = "s__{}__{}__{:.5f}p__{:.5f}q_{}_{}".format(
             T1_table, T2_table, p, q, i, 1
         )
-        S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+        S2_name = "s__{}__{}__{:.5f}p__{:.5f}q_{}_{}".format(
             T1_table, T2_table, p, q, i, 2
         )
         S1_name = S1_name.replace(".", "_")
@@ -1623,12 +1624,12 @@ def create_preset_stratified_sample_pair_from_impala_individual(
             break
 
         for row in results:
-            cur2.execute(
-                """INSERT INTO TABLE {}.{} VALUES ({}, {}, {}, {}, now())
-            """.format(
-                    target_schema, group_info_table, row[0], K, row[1], q
-                )
-            )
+            # cur2.execute(
+            #     """INSERT INTO TABLE {}.{} VALUES ({}, {}, {}, {}, now())
+            # """.format(
+            #         target_schema, group_info_table, row[0], K, row[1], q
+            #     )
+            # )
             group_counts.append((row[0], row[1]))
 
     conn.commit()
@@ -2300,108 +2301,162 @@ def create_cent_sample_pair_from_impala(
 
     num_keys = max([T1_join_key_count, T2_join_key_count])
 
-    a_v = np.zeros((num_keys, 2))
-    b_v = np.zeros((num_keys, 2))
-    mu_v = np.zeros((num_keys, 2))
-    var_v = np.zeros((num_keys, 2))
+    num_batch = math.floor(num_keys / key_fetch_size)
 
-    keys = np.arange(1, num_keys + 1)
-    #  a_v[:, 0] = keys
-    #  b_v[:, 0] = keys
-    #  mu_v[:, 0] = keys
-    #  var_v[:, 0] = keys
+    sum1 = 0
+    sum2 = 0
+    sum3 = 0
+    sum4 = 0
+    sum5 = 0
+    A_denom = 0
+    A1 = 0
+    A2 = 0
+    A3 = 0
+    A4 = 0
+    B_denom1 = 0
+    B_denom2 = 0
+    B1 = 0
+    B2 = 0
+    B3 = 0
+    B4 = 0
+    C_denom = 0
+    C1 = 0
+    C2 = 0
+    C3 = 0
+    C4 = 0
 
-    cur = conn.cursor()
-    cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(sample_schema))
-    T1_where = " WHERE {}".format(T1_where) if T1_where else ""
-    T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}) FROM {2}.{3} {4} GROUP BY {0};
-    """.format(
-        T1_join_col, T1_agg_col, T1_schema, T1_table, T1_where
-    )
-    cur.execute(T1_group_by_count_sql)
+    e1 = 0.001
+    e2 = 0.001
 
-    while True:
-        results = cur.fetchmany(fetch_size)
-        if not results:
-            break
+    for i in range(num_batch):
+        a_v = np.zeros((key_fetch_size, 2))
+        b_v = np.zeros((key_fetch_size, 2))
+        mu_v = np.zeros((key_fetch_size, 2))
+        var_v = np.zeros((key_fetch_size, 2))
 
-        for row in results:
-            col1 = row[0]
-            cnt = row[1]
-            mean = row[2]
-            var = row[3]
-            a_v[col1 - 1, 0] = cnt
-            mu_v[col1 - 1, 0] = mean
-            if var is None:
-                var = 0
-            var_v[col1 - 1, 0] = var
-    a_v[:, 1] = a_v[:, 0] ** 2
-    mu_v[:, 1] = mu_v[:, 0] ** 2
-    mu_v = np.nan_to_num(mu_v)
-    var_v = np.nan_to_num(var_v)
+        keys = np.arange(i * key_fetch_size + 1, (i+1) * key_fetch_size + 1)
 
-    p = 0
+        cur = conn.cursor()
+        T1_where = " WHERE {}".format(T1_where) if T1_where else ""
+        T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}) FROM {2}.{3} {4}
+        WHERE {0} >= {5} AND {0} < {6}
+        GROUP BY {0}
+        ORDER BY {0}
+        """.format(
+            T1_join_col, T1_agg_col, T1_schema, T1_table, T1_where, i * key_fetch_size, (i+1) * key_fetch_size
+        )
+        cur.execute(T1_group_by_count_sql)
 
-    cur = conn.cursor()
-    T2_group_by_count_sql = """SELECT {0}, COUNT(*) FROM {1}.{2} GROUP BY {0};
-    """.format(
-        T2_join_col, T2_schema, T2_table
-    )
-    cur.execute(T2_group_by_count_sql)
-    while True:
-        results = cur.fetchmany(fetch_size)
-        if not results:
-            break
 
-        for row in results:
-            col1 = row[0]
-            cnt = row[1]
-            b_v[col1 - 1, 0] = cnt
+        while True:
+            results = cur.fetchmany(fetch_size)
+            if not results:
+                break
 
-    b_v[:, 1] = b_v[:, 0] ** 2
-    t2 = datetime.datetime.now()
+            for row in results:
+                col1 = row[0] - (i * key_fetch_size)
+                cnt = row[1]
+                mean = row[2]
+                var = row[3]
+                a_v[col1 - 1, 0] = cnt
+                mu_v[col1 - 1, 0] = mean
+                if var is None:
+                    var = 0
+                var_v[col1 - 1, 0] = var
+        a_v[:, 1] = a_v[:, 0] ** 2
+        mu_v[:, 1] = mu_v[:, 0] ** 2
+        mu_v = np.nan_to_num(mu_v)
+        var_v = np.nan_to_num(var_v)
+
+        p = 0
+
+        cur = conn.cursor()
+        T2_group_by_count_sql = """SELECT {0}, COUNT(*) FROM {1}.{2}
+        WHERE {0} >= {3} AND {0} < {4}
+        GROUP BY {0} ORDER BY {0};
+        """.format(
+            T2_join_col, T2_schema, T2_table, i * key_fetch_size, (i+1) * key_fetch_size
+        )
+        cur.execute(T2_group_by_count_sql)
+        while True:
+            results = cur.fetchmany(fetch_size)
+            if not results:
+                break
+
+            for row in results:
+                col1 = row[0] - (i * key_fetch_size)
+                cnt = row[1]
+                b_v[col1 - 1, 0] = cnt
+
+        b_v[:, 1] = b_v[:, 0] ** 2
+        t2 = datetime.datetime.now()
+
+        if agg_type == "count":
+            sum1 += sum(
+                a_v[:, 1] * b_v[:, 1]
+                - a_v[:, 1] * b_v[:, 0]
+                - a_v[:, 0] * b_v[:, 1]
+                + a_v[:, 0] * b_v[:, 0]
+            )
+            sum2 += sum(a_v[:, 0] * b_v[:, 0])
+        elif agg_type == "sum":
+            sum1 += sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
+            sum2 += sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0])
+            sum3 += sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
+            sum4 += sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+            sum5 += sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+        elif agg_type == "avg":
+            A_denom += sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])
+            A1 += sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+            A2 += sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
+            A3 += sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0])
+            A4 += sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
+
+            B_denom1 += sum(a_v[:, 0] * b_v[:, 0])
+            B_denom2 += sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])
+            B1 += sum(a_v[:, 0] * b_v[:, 0])
+            B2 += sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 1])
+            B3 += sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 0])
+            B4 += sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 1])
+
+            C_denom += sum(a_v[:, 0] * b_v[:, 0])
+            C1 += sum(a_v[:, 0] * b_v[:, 0])
+            C2 += sum(a_v[:, 1] * b_v[:, 1])
+            C3 += sum(a_v[:, 1] * b_v[:, 0])
+            C4 += sum(a_v[:, 0] * b_v[:, 1])
+        else:
+            print("Unsupported operation")
+            return
 
     if agg_type == "count":
-        sum1 = sum(
-            a_v[:, 1] * b_v[:, 1]
-            - a_v[:, 1] * b_v[:, 0]
-            - a_v[:, 0] * b_v[:, 1]
-            + a_v[:, 0] * b_v[:, 0]
-        )
-        sum2 = sum(a_v[:, 0] * b_v[:, 0])
         val = e1 * e2 * sum1 / sum2
         if val > 0:
             val = math.sqrt(val)
         p = min([1, max([e1, e2, val])])
     elif agg_type == "sum":
-        sum1 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
-        sum2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0])
-        sum3 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
-        sum4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
-        sum5 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
         val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
         val = math.sqrt(val) if val > 0 else val
         p = min([1, max([e1, e2, val])])
     elif agg_type == "avg":
-        A_denom = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0]) ** 2
-        A1 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0]) / A_denom
-        A2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / A_denom
-        A3 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0]) / A_denom
-        A4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1]) / A_denom
+        A_denom = A_denom ** 2
+        A1 = A1 / A_denom
+        A2 = A2 / A_denom
+        A3 = A3 / A_denom
+        A4 = A4 / A_denom
         A = A1 + A2 - A3 - A4
 
-        B_denom = sum(a_v[:, 0] * b_v[:, 0]) * sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])
-        B1 = 1 / sum(a_v[:, 0] * b_v[:, 0])
-        B2 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 1]) / B_denom
-        B3 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 0]) / B_denom
-        B4 = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 1]) / B_denom
+        B_denom = B_denom1 * B_denom2
+        B1 = 1 / B1
+        B2 = B2 / B_denom
+        B3 = B3 / B_denom
+        B4 = B4 / B_denom
         B = B1 + B2 - B3 - B4
 
-        C_denom = sum(a_v[:, 0] * b_v[:, 0]) ** 2
-        C1 = sum(a_v[:, 0] * b_v[:, 0]) / C_denom
-        C2 = sum(a_v[:, 1] * b_v[:, 1]) / C_denom
-        C3 = sum(a_v[:, 1] * b_v[:, 0]) / C_denom
-        C4 = sum(a_v[:, 0] * b_v[:, 1]) / C_denom
+        C_denom = C_denom ** 2
+        C1 = C1 / C_denom
+        C2 = C2 / C_denom
+        C3 = C3 / C_denom
+        C4 = C4 / C_denom
         C = C1 + C2 - C3 - C4
 
         # D = (1 / e1 * e2) * (A1 - 2 * B1 + C1)
@@ -2428,9 +2483,6 @@ def create_cent_sample_pair_from_impala(
                 p = p_minus
             else:
                 p = p_plus
-    else:
-        print("Unsupported operation")
-        return
 
     q1 = e1 / p
     q2 = e2 / p
@@ -4092,7 +4144,7 @@ def create_cent_stratified_sample_pair_from_impala(
         print("Budget for minority exceeded for {}, {}".format(key_t, row_t))
         return
     print(("Budget works for {}, {}".format(key_t, row_t)))
-    return
+    # return
 
     # get # of of join keys in each table
     T1_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
@@ -4162,33 +4214,33 @@ def create_cent_stratified_sample_pair_from_impala(
             T1_join_col, T1_agg_col, T1_schema, T1_table, T1_group_col, i
         )
         cur.execute(T1_group_by_count_sql)
-        results = cur.fetchall()
-        for row in results:
-            col1 = row[0]
-            cnt = row[1]
-            mean = row[2]
-            var = row[3]
-            a_v[col1 - 1, 0] = cnt
-            mu_v[col1 - 1, 0] = mean
-            if var is None:
-                var = 0
-            var_v[col1 - 1, 0] = var
+        # results = cur.fetchall()
+        # for row in results:
+        #     col1 = row[0]
+        #     cnt = row[1]
+        #     mean = row[2]
+        #     var = row[3]
+        #     a_v[col1 - 1, 0] = cnt
+        #     mu_v[col1 - 1, 0] = mean
+        #     if var is None:
+        #         var = 0
+        #     var_v[col1 - 1, 0] = var
 
-        # while True:
-        #     results = cur.fetchmany(fetch_size)
-        #     if not results:
-        #         break
+        while True:
+            results = cur.fetchmany(fetch_size)
+            if not results:
+                break
 
-        #     for row in results:
-        #         col1 = row[0]
-        #         cnt = row[1]
-        #         mean = row[2]
-        #         var = row[3]
-        #         a_v[col1 - 1, 0] = cnt
-        #         mu_v[col1 - 1, 0] = mean
-        #         if var is None:
-        #             var = 0
-        #         var_v[col1 - 1, 0] = var
+            for row in results:
+                col1 = row[0]
+                cnt = row[1]
+                mean = row[2]
+                var = row[3]
+                a_v[col1 - 1, 0] = cnt
+                mu_v[col1 - 1, 0] = mean
+                if var is None:
+                    var = 0
+                var_v[col1 - 1, 0] = var
         a_v[:, 1] = a_v[:, 0] ** 2
         mu_v[:, 1] = mu_v[:, 0] ** 2
         mu_v = np.nan_to_num(mu_v)

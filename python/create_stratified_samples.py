@@ -25,7 +25,7 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 4
+num_proc = 24
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 500
@@ -42,14 +42,12 @@ impala_port = 21050
 e1 = 0.03
 e2 = 0.01
 
-
 # for stratified samples for synthetic (old)
 for leftDist in ["normal_powerlaw2_1"]:
     for rightDist in ["normal_2"]:
-        # for agg in ["count", "sum", "avg"]:
-        for agg in ["count"]:
+        for agg in ["count", "sum", "avg"]:
             for key_t in [1000, 10000, 100000, 1000000]:
-                for row_t in [10, 100, 1000, 10000]:
+                for row_t in [10, 100]:
                     old_args.append(
                         (
                             impala_host,
@@ -62,7 +60,7 @@ for leftDist in ["normal_powerlaw2_1"]:
                             "synthetic_10m",
                             rightDist,
                             "col1",
-                            "new_st_test2",
+                            "old_st_test2",
                             agg,
                             key_t,
                             row_t,

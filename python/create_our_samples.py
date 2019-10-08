@@ -25,12 +25,12 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 9
+num_proc = 3
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 # num_instacart_samples = 500
 # num_movielens_samples = 500
-num_tpch100g_samples = 500
+num_tpch_samples = 500
 num_synthetic_samples = 1
 overwrite = False
 dec_args = []
@@ -166,6 +166,8 @@ args.append(
 # for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
 #     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
 # for agg in ["count", "sum", "avg"]:
+# for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
+"""
 for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
         for agg in ["avg"]:
@@ -187,12 +189,13 @@ for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
                     overwrite,
                 )
             )
+"""
 
 # dec samples for synthetic
-dists = []
-for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
-    for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-        dists.append((leftDist, rightDist))
+# dists = []
+# for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
+#     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
+#         dists.append((leftDist, rightDist))
 
 # for dist in dists:
 #     for agg in ["count", "sum", "avg"]:
@@ -295,61 +298,61 @@ pool.close()
 pool.join()
 
 tpch_args = []
-# samples for tpch100g queries
-# tpch_args.append(
-#     (
-#         impala_host,
-#         impala_port,
-#         "tpch100g_parquet",
-#         "lineitem",
-#         "l_orderkey",
-#         "l_quantity",
-#         "tpch100g_parquet",
-#         "orders",
-#         "o_orderkey",
-#         None,
-#         "tpch100g_cent2",
-#         "count",
-#         num_tpch100g_samples,
-#         overwrite,
-#     )
-# )
-# tpch_args.append(
-#     (
-#         impala_host,
-#         impala_port,
-#         "tpch100g_parquet",
-#         "lineitem",
-#         "l_orderkey",
-#         "l_quantity",
-#         "tpch100g_parquet",
-#         "orders",
-#         "o_orderkey",
-#         None,
-#         "tpch100g_cent2",
-#         "sum",
-#         num_tpch100g_samples,
-#         overwrite,
-#     )
-# )
-# tpch_args.append(
-#     (
-#         impala_host,
-#         impala_port,
-#         "tpch100g_parquet",
-#         "lineitem",
-#         "l_orderkey",
-#         "l_extendedprice",
-#         "tpch100g_parquet",
-#         "orders",
-#         "o_orderkey",
-#         None,
-#         "tpch100g_cent2",
-#         "avg",
-#         num_tpch100g_samples,
-#         overwrite,
-#     )
-# )
+# samples for tpch300g queries
+tpch_args.append(
+    (
+        impala_host,
+        impala_port,
+        "tpch1000g_parquet",
+        "lineitem",
+        "l_orderkey",
+        "l_quantity",
+        "tpch1000g_parquet",
+        "orders",
+        "o_orderkey",
+        None,
+        "tpch1000g_cent1",
+        "count",
+        num_tpch_samples,
+        overwrite,
+    )
+)
+tpch_args.append(
+    (
+        impala_host,
+        impala_port,
+        "tpch1000g_parquet",
+        "lineitem",
+        "l_orderkey",
+        "l_quantity",
+        "tpch1000g_parquet",
+        "orders",
+        "o_orderkey",
+        None,
+        "tpch1000g_cent1",
+        "sum",
+        num_tpch_samples,
+        overwrite,
+    )
+)
+tpch_args.append(
+    (
+        impala_host,
+        impala_port,
+        "tpch1000g_parquet",
+        "lineitem",
+        "l_orderkey",
+        "l_extendedprice",
+        "tpch1000g_parquet",
+        "orders",
+        "o_orderkey",
+        None,
+        "tpch1000g_cent1",
+        "avg",
+        num_tpch_samples,
+        overwrite,
+    )
+)
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 

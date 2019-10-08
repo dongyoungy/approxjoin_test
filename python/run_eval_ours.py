@@ -70,6 +70,7 @@ if overwrite:
 # for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
 #     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
 #         for agg in ["count", "sum", "avg"]:
+"""
 for leftDist in ["powerlaw_1"]:
     for rightDist in ["powerlaw_2"]:
         for agg in ["avg"]:
@@ -86,6 +87,7 @@ for leftDist in ["powerlaw_1"]:
                     False,
                 )
             )
+"""
 
 """
 # evaluate synthetic (dec)
@@ -150,19 +152,19 @@ for agg in ["count", "sum", "avg"]:
     )
 """
 
-# # evaluate tpch (ours)
-# for agg in ["count", "sum", "avg"]:
-#     tpch_ours.append(
-#         (
-#             impala_host,
-#             impala_port,
-#             "tpch100g_parquet",
-#             "tpch100g_cent2",
-#             agg,
-#             num_tpch_samples,
-#             False,
-#         )
-#     )
+# evaluate tpch (ours)
+for agg in ["count", "sum", "avg"]:
+    tpch_ours.append(
+        (
+            impala_host,
+            impala_port,
+            "tpch1000g_parquet",
+            "tpch1000g_cent1",
+            agg,
+            num_tpch_samples,
+            False,
+        )
+    )
 
 # run
 results = []

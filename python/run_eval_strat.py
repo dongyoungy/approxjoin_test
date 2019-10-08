@@ -34,13 +34,13 @@ prob.append((0.333, 0.03))
 prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
-num_proc = 3
+num_proc = 10
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 100
 num_synthetic_samples = 100
 overwrite = False
-impala_host = "cp-18"
+impala_host = "cp-14"
 impala_port = 21050
 
 synthetic_ours = []
@@ -52,42 +52,57 @@ e1 = 0.03
 e2 = 0.01
 
 # evaluate synthetic (cent)
-for agg in ["count", "sum", "avg"]:
-    synthetic_ours.append(
-        (
-            impala_host,
-            impala_port,
-            "synthetic_10m",
-            "new_st_test2",
-            "normal_powerlaw2_1",
-            "normal_2",
-            agg,
-            e1,
-            e2,
-            10000,
-            100000,
-            num_synthetic_samples,
-            False,
-        )
-    )
-
-# evaluate synthetic (preset)
 # for agg in ["count", "sum", "avg"]:
-#     synthetic_preset.append(
+#     synthetic_ours.append(
 #         (
 #             impala_host,
 #             impala_port,
 #             "synthetic_10m",
-#             "synthetic_10m_preset_strat4",
-#             "normal_powerlaw_1",
+#             "new_st_test2",
+#             "normal_powerlaw2_1",
 #             "normal_2",
 #             agg,
-#             100 * 1000,
-#             0.01,
+#             e1,
+#             e2,
+#             10000,
+#             100000,
 #             num_synthetic_samples,
 #             False,
 #         )
 #     )
+
+# evaluate synthetic (preset)
+for agg in ["count", "sum", "avg"]:
+    synthetic_preset.append(
+        (
+            impala_host,
+            impala_port,
+            "synthetic_10m",
+            "synthetic_10m_preset_strat5",
+            "normal_powerlaw2_1",
+            "normal_2",
+            agg,
+            100000,
+            0.01,
+            num_synthetic_samples,
+            False,
+        )
+    )
+    synthetic_preset.append(
+        (
+            impala_host,
+            impala_port,
+            "synthetic_10m",
+            "synthetic_10m_preset_strat6",
+            "normal_powerlaw2_1",
+            "normal_2",
+            agg,
+            10000,
+            0.01,
+            num_synthetic_samples,
+            False,
+        )
+    )
 
 
 # run

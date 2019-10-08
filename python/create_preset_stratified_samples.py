@@ -25,7 +25,7 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 20
+num_proc = 10
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 500
@@ -53,8 +53,8 @@ for leftDist in ["normal_powerlaw2_1"]:
                     "synthetic_10m",
                     rightDist,
                     "col1",
-                    "synthetic_10m_preset_strat5",
-                    100000,
+                    "synthetic_10m_preset_strat6",
+                    10000,
                     0.01,
                     num_synthetic_samples,
                     i,
