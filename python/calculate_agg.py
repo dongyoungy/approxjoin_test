@@ -230,6 +230,125 @@ def estimate_count_with_cond(num_rows,
 
 
 @cached(estimate_cache, lock=lock)
+def estimate_avg_dec(
+        num_rows,
+        num_keys,
+        leftDist,
+        rightDist,
+        sample_idx,
+):
+    dir = data_path + 'our_samples/'
+    d = 'decentralized'
+
+    sample_dir = dir + d + '/'
+    count_dir = "{}/{}n_{}k/{}_{}/count".format(sample_dir, num_rows, num_keys,
+                                                leftDist, rightDist)
+    sum_dir = "{}/{}n_{}k/{}_{}/sum".format(sample_dir, num_rows, num_keys,
+                                            leftDist, rightDist)
+
+    S1_count_name = "{}/s1_{}.npy".format(count_dir, sample_idx)
+    S2_count_name = "{}/s2_{}.npy".format(count_dir, sample_idx)
+
+    S1_count_data = np.load(S1_count_name)
+    S2_count_data = np.load(S2_count_name)
+
+    S1_count_data = S1_count_data[()]
+    S2_count_data = S2_count_data[()]
+
+    S1_count = S1_count_data['sample']
+    p1_count = S1_count_data['p']
+    q1_count = S1_count_data['q']
+
+    S2_count = S2_count_data['sample']
+    p2_count = S2_count_data['p']
+    q2_count = S2_count_data['q']
+
+    S1_sum_name = "{}/s1_{}.npy".format(sum_dir, sample_idx)
+    S2_sum_name = "{}/s2_{}.npy".format(sum_dir, sample_idx)
+
+    S1_sum_data = np.load(S1_sum_name)
+    S2_sum_data = np.load(S2_sum_name)
+
+    S1_sum_data = S1_sum_data[()]
+    S2_sum_data = S2_sum_data[()]
+
+    S1_sum = S1_sum_data['sample']
+    p1_sum = S1_sum_data['p']
+    q1_sum = S1_sum_data['q']
+
+    S2_sum = S2_sum_data['sample']
+    p2_sum = S2_sum_data['p']
+    q2_sum = S2_sum_data['q']
+
+    keys = np.arange(1, num_keys + 1)
+
+    S1_count_freq = np.zeros((num_keys, 2))
+    S2_count_freq = np.zeros((num_keys, 2))
+
+    S1_count_freq[:, 0] = keys
+    S2_count_freq[:, 0] = keys
+
+    S1_sum_freq = np.zeros((num_keys, 2))
+    S2_sum_freq = np.zeros((num_keys, 2))
+
+    S1_sum_freq[:, 0] = keys
+    S2_sum_freq[:, 0] = keys
+
+    S1_cnt = np.array(np.unique(S1_count[:, 0], return_counts=True)).T
+    S1_count_freq[S1_cnt[:, 0].astype(int) - 1, 1] = S1_cnt[:, 1]
+
+    S2_cnt = np.array(np.unique(S2_count[:, 0], return_counts=True)).T
+    S2_count_freq[S2_cnt[:, 0].astype(int) - 1, 1] = S2_cnt[:, 1]
+
+    S1_cnt = np.array(np.unique(S1_sum[:, 0], return_counts=True)).T
+    S1_sum_freq[S1_cnt[:, 0].astype(int) - 1, 1] = S1_cnt[:, 1]
+
+    S2_cnt = np.array(np.unique(S2_sum[:, 0], return_counts=True)).T
+    S2_sum_freq[S2_cnt[:, 0].astype(int) - 1, 1] = S2_cnt[:, 1]
+
+    actual = calculate_actual(num_rows, num_keys, leftDist, rightDist, 'avg')
+    if actual is None:
+        print("Could not calculate actual agg.")
+        return
+
+    estimate_count = sum(S1_count_freq[:, 1] * S2_count_freq[:, 1])
+    p = min([p1_count, p2_count])
+    estimate_count = estimate_count * (1 / (p * q1_count * q2_count))
+
+    mu = np.zeros((num_keys, 1))
+    d = get_group_by_average(S1_sum)
+    for k in d:
+        mu[int(k - 1), 0] = d[k]
+
+    estimate_sum = sum(mu[:, 0] * S1_sum_freq[:, 1] * S2_sum_freq[:, 1])
+    p = min([p1_sum, p2_sum])
+    estimate_sum = estimate_sum * (1 / (p * q1_sum * q2_sum))
+    estimate = estimate_sum / estimate_count if estimate_count != 0 else 0
+
+    p_count = p1_count
+    q_count = q1_count
+    p_sum = p1_sum
+    q_sum = q1_sum
+
+    # duplicate info just in case
+    result = EstimateResult()
+    result.actual = actual
+    result.estimate = estimate
+    result.p_count = p_count
+    result.q_count = q_count
+    result.p_sum = p_sum
+    result.q_sum = q_sum
+    result.num_rows = num_rows
+    result.num_keys = num_keys
+    result.left_dist = leftDist
+    result.right_dist = rightDist
+    result.agg_func = 'avg'
+
+    return (num_rows, num_keys, leftDist, rightDist, 'avg', sample_idx,
+            result)
+
+
+@cached(estimate_cache, lock=lock)
 def estimate_agg(num_rows, num_keys, leftDist, rightDist, aggFunc, sample_idx,
                  isCentralized):
     dir = data_path + 'our_samples/'
@@ -485,7 +604,7 @@ def estimate_preset_count_with_cond(num_rows,
     S2_freq[S2_counts[:, 0].astype(int) - 1, 1] = S2_counts[:, 1]
 
     actual = calculate_actual_count_with_cond(num_rows, num_keys, leftDist,
-                                        rightDist, rel_type, cond)
+                                              rightDist, rel_type, cond)
     if actual is None:
         print("Could not calculate actual agg.")
         return

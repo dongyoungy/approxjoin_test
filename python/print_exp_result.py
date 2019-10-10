@@ -5,10 +5,10 @@ from cachetools import LRUCache, cached
 
 dist_pairs = []
 dist_pairs.append(('uniform', 'uniform'))
-dist_pairs.append(('uniform', 'normal'))
-dist_pairs.append(('uniform', 'powerlaw'))
-dist_pairs.append(('normal', 'normal'))
-dist_pairs.append(('normal', 'powerlaw'))
+#  dist_pairs.append(('uniform', 'normal'))
+#  dist_pairs.append(('uniform', 'powerlaw'))
+#  dist_pairs.append(('normal', 'normal'))
+#  dist_pairs.append(('normal', 'powerlaw'))
 var_dists = ['uniform', 'normal', 'powerlaw']
 cond_dists = ['uniform', 'identical']
 
@@ -59,6 +59,7 @@ def print_our_results_with_cond(results, actual_cond_dist='uniform'):
 
     for cond_dist in cond_dists:
         for var_dist in var_dists:
+            is_printed = False
             for d in dist_pairs:
                 vars = []
                 p = 0
@@ -71,9 +72,17 @@ def print_our_results_with_cond(results, actual_cond_dist='uniform'):
                     res = new_results[(d[0], d[1], cond_dist, var_dist, c)]
                     estimates = []
                     for row in res:
+                        #  print(row.estimate)
                         estimates.append(row.estimate)
                         p = row.p
                         q = row.q
+                        if not is_printed:
+                            print("{}, {}".format(p, q))
+                            is_printed = True
+                    if estimates:
+                        np.savetxt("estimates.csv",
+                                   np.array(estimates),
+                                   delimiter=",")
                     if actual_cond_dist == 'uniform':
                         vars.append(np.var(estimates))
                     elif actual_cond_dist == 'identical':
@@ -106,16 +115,20 @@ def print_preset_results_with_cond(results, actual_cond_dist='uniform'):
 
     for v in var_dists:
         if actual_cond_dist == 'identical':
-            x_dists = get_dist_of_X(10 * 1000 * 1000, 1000 * 1000,
-                                    'uniform', v)
+            x_dists = get_dist_of_X(10 * 1000 * 1000, 1000 * 1000, 'uniform',
+                                    v)
             x_total = np.sum(x_dists)
         for p in probs:
             vars = []
             for c in range(0, 10):
-                res = new_results[('normal', 'normal', p[0], p[1], v, c)]
+                res = new_results[('uniform', 'uniform', p[0], p[1], v, c)]
                 estimates = []
                 for row in res:
                     estimates.append(row.estimate)
+                if estimates:
+                    np.savetxt("estimates_{}_{}_{}.csv".format(v, p[0], p[1]),
+                               np.array(estimates),
+                               delimiter=",")
                 if actual_cond_dist == 'uniform':
                     vars.append(np.var(estimates))
                 elif actual_cond_dist == 'identical':
@@ -167,6 +180,115 @@ def print_dec_result(results):
                 print("{:.3f},{:.3f},{:.3f}".format(
                     new_results[t1][t2][agg][0], new_results[t1][t2][agg][1],
                     new_results[t1][t2][agg][2]))
+
+    return new_results
+
+
+def print_dec_avg_result(results):
+    results = results[()]  # strip out of the array
+    new_results = defaultdict(dict)
+    for k in results.keys():
+        if k == 0:
+            continue
+        result = results[k]
+        num_result = len(result)
+        estimates = []
+        for i in range(0, num_result):
+            p = result[i].p
+            q = result[i].q
+            estimates.append(result[i].estimate)
+
+        v = np.var(estimates)
+
+        t1 = k[2]
+        t2 = k[3]
+        agg = k[4]
+
+        if t1 not in new_results or t2 not in new_results[t1]:
+            new_results[t1][t2] = {}
+        new_results[t1][t2][agg] = (p, q, v)
+        print("{} (p = {:.3f}, q = {:.3f}): {:.3f}".format(k, p, q, v))
+
+    t1s = ['uniform', 'normal', 'powerlaw']
+    aggs = ['avg']
+    for agg in aggs:
+        for t1 in t1s:
+            print("T1 = {}, Agg = {}".format(t1, agg))
+            t2s = ['uniform', 'normal', 'powerlaw']
+            t2s.append(t1 + '_max_var')
+            for t2 in t2s:
+                #  print("{:.3f},{:.3f},{:.3f}".format(
+                #  new_results[t1][t2][agg][0], new_results[t1][t2][agg][1],
+                #  new_results[t1][t2][agg][2]))
+                print("{}: {:.3f}".format(t2, new_results[t1][t2][agg][2]))
+
+    return new_results
+
+
+def print_avg_preset_result(results):
+
+    prob = []
+    prob.append((0.01, 1))
+    prob.append((0.015, 0.666))
+    prob.append((0.03, 0.333))
+    prob.append((0.333, 0.03))
+    prob.append((0.666, 0.015))
+    prob.append((1, 0.01))
+
+    results = results[()]  # strip out of the array
+    new_results = defaultdict(dict)
+    for k in results.keys():
+        if k == 0:
+            continue
+        result = results[k]
+        num_result = len(result)
+        r = defaultdict(list)
+        for i in range(0, num_result):
+            p = result[i].p
+            q = result[i].q
+            r[(p, q)].append(result[i].estimate)
+
+        vars = {}
+        for k2 in r.keys():
+            vars[k2] = np.var(r[k2])
+
+        t1 = k[2]
+        t2 = k[3]
+        agg = k[4]
+
+        if t1 not in new_results or t2 not in new_results[t1]:
+            new_results[t1][t2] = {}
+
+        for pq in vars.keys():
+            new_results[t1][t2][(agg, pq[0], pq[1])] = vars[pq]
+
+    t1s = ['uniform', 'normal', 'powerlaw']
+    aggs = ['avg']
+    for agg in aggs:
+        for t1 in t1s:
+            print("T1 = {}, Agg = {}".format(t1, agg))
+            t2s = ['uniform', 'normal', 'powerlaw']
+            t2s.append(t1 + '_max_var')
+
+            num_prob = len(prob)
+            num_t2 = len(t2s)
+
+            arr = np.ndarray((num_t2, num_prob))
+
+            for pr in prob:
+                p = pr[0]
+                q = pr[1]
+                print("T1 = {}, Agg = {}, p = {}, q = {}".format(
+                    t1, agg, p, q))
+                for t2 in t2s:
+                    val = new_results[t1][t2][(agg, p, q)]
+                    arr[t2s.index(t2)][prob.index(pr)] = val
+                    print("{:.3f}".format(new_results[t1][t2][(agg, p, q)]))
+
+            for i in range(0, num_t2):
+                for j in range(0, num_prob):
+                    print(arr[i][j], end=",")
+                print()
 
     return new_results
 
@@ -233,6 +355,82 @@ def print_preset_result(results):
                     val = new_results[t1][t2][(agg, p, q)]
                     arr[t2s.index(t2)][prob.index(pr)] = val
                     print("{:.3f}".format(new_results[t1][t2][(agg, p, q)]))
+
+            for i in range(0, num_t2):
+                for j in range(0, num_prob):
+                    print(arr[i][j], end=",")
+                print()
+
+    return new_results
+
+
+def print_preset_result_2p(results):
+
+    prob = []
+    #  prob.append((0.01, 1))
+    #  prob.append((0.015, 0.666))
+    #  prob.append((0.03, 0.333))
+    #  prob.append((0.333, 0.03))
+    #  prob.append((0.666, 0.015))
+    #  prob.append((1, 0.01))
+    # for 2%
+    prob.append((0.02, 1))
+    prob.append((0.04, 0.5))
+    prob.append((0.08, 0.25))
+    prob.append((0.25, 0.08))
+    prob.append((0.5, 0.04))
+    prob.append((1, 0.02))
+
+    results = results[()]  # strip out of the array
+    new_results = defaultdict(dict)
+    for k in results.keys():
+        if k == 0:
+            continue
+        result = results[k]
+        num_result = len(result)
+        r = defaultdict(list)
+        for i in range(0, num_result):
+            p = result[i].p
+            q = result[i].q
+            r[(p, q)].append(result[i].estimate)
+
+        vars = {}
+        for k2 in r.keys():
+            vars[k2] = np.var(r[k2])
+
+        t1 = k[2]
+        t2 = k[3]
+        agg = k[4]
+
+        if t1 not in new_results or t2 not in new_results[t1]:
+            new_results[t1][t2] = {}
+
+        for pq in vars.keys():
+            new_results[t1][t2][(agg, pq[0], pq[1])] = vars[pq]
+
+    t1s = ['uniform', 'normal', 'powerlaw']
+    aggs = ['avg']
+    for agg in aggs:
+        for t1 in t1s:
+            print("T1 = {}, Agg = {}".format(t1, agg))
+            t2s = ['uniform', 'normal', 'powerlaw']
+            t2s.append(t1 + '_max_var')
+
+            num_prob = len(prob)
+            num_t2 = len(t2s)
+
+            arr = np.ndarray((num_t2, num_prob))
+
+            for pr in prob:
+                p = pr[0]
+                q = pr[1]
+                print("T1 = {}, Agg = {}, p = {}, q = {}".format(
+                    t1, agg, p, q))
+                for t2 in t2s:
+                    val = new_results[t1][t2][(agg, p, q)]
+                    arr[t2s.index(t2)][prob.index(pr)] = val
+                    print("{} : {:.3f}".format(
+                        t2, new_results[t1][t2][(agg, p, q)]))
 
             for i in range(0, num_t2):
                 for j in range(0, num_prob):
