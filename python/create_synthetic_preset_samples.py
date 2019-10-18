@@ -25,21 +25,21 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 32
+num_proc = 16
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
-num_samples = 1000
+num_samples = 2000
 overwrite = False
 args = []
 results = []
 impala_host = "cp-4"
 impala_port = 21050
 
-T1_schema = "synthetic_10m"
+T1_schema = "synthetic_1m"
 T1_join_col = "col1"
-T2_schema = "synthetic_10m"
+T2_schema = "synthetic_1m"
 T2_join_col = "col1"
-target_schema = "synthetic_10m_preset2"
+target_schema = "synthetic_1m_preset1"
 
 prob = []
 prob.append((0.01, 1))
@@ -50,108 +50,108 @@ prob.append((0.666, 0.015))
 prob.append((1, 0.01))
 
 for p in prob:
-    # args.append(
-    #     (
-    #         impala_host,
-    #         impala_port,
-    #         T1_schema,
-    #         "uniform_1",
-    #         T1_join_col,
-    #         T2_schema,
-    #         "uniform_2",
-    #         T2_join_col,
-    #         target_schema,
-    #         p[0],
-    #         p[1],
-    #         num_samples,
-    #         overwrite,
-    #     )
-    # )
-    # args.append(
-    #     (
-    #         impala_host,
-    #         impala_port,
-    #         T1_schema,
-    #         "uniform_1",
-    #         T1_join_col,
-    #         T2_schema,
-    #         "normal_2",
-    #         T2_join_col,
-    #         target_schema,
-    #         p[0],
-    #         p[1],
-    #         num_samples,
-    #         overwrite,
-    #     )
-    # )
-    # args.append(
-    #     (
-    #         impala_host,
-    #         impala_port,
-    #         T1_schema,
-    #         "uniform_1",
-    #         T1_join_col,
-    #         T2_schema,
-    #         "powerlaw_2",
-    #         T2_join_col,
-    #         target_schema,
-    #         p[0],
-    #         p[1],
-    #         num_samples,
-    #         overwrite,
-    #     )
-    # )
-    # args.append(
-    #     (
-    #         impala_host,
-    #         impala_port,
-    #         T1_schema,
-    #         "normal_1",
-    #         T1_join_col,
-    #         T2_schema,
-    #         "uniform_2",
-    #         T2_join_col,
-    #         target_schema,
-    #         p[0],
-    #         p[1],
-    #         num_samples,
-    #         overwrite,
-    #     )
-    # )
-    # args.append(
-    #     (
-    #         impala_host,
-    #         impala_port,
-    #         T1_schema,
-    #         "normal_1",
-    #         T1_join_col,
-    #         T2_schema,
-    #         "normal_2",
-    #         T2_join_col,
-    #         target_schema,
-    #         p[0],
-    #         p[1],
-    #         num_samples,
-    #         overwrite,
-    #     )
-    # )
-    # args.append(
-    #     (
-    #         impala_host,
-    #         impala_port,
-    #         T1_schema,
-    #         "normal_1",
-    #         T1_join_col,
-    #         T2_schema,
-    #         "powerlaw_2",
-    #         T2_join_col,
-    #         target_schema,
-    #         p[0],
-    #         p[1],
-    #         num_samples,
-    #         overwrite,
-    #     )
-    # )
+    args.append(
+        (
+            impala_host,
+            impala_port,
+            T1_schema,
+            "uniform_1",
+            T1_join_col,
+            T2_schema,
+            "uniform_2",
+            T2_join_col,
+            target_schema,
+            p[0],
+            p[1],
+            num_samples,
+            overwrite,
+        )
+    )
+    args.append(
+        (
+            impala_host,
+            impala_port,
+            T1_schema,
+            "uniform_1",
+            T1_join_col,
+            T2_schema,
+            "normal_2",
+            T2_join_col,
+            target_schema,
+            p[0],
+            p[1],
+            num_samples,
+            overwrite,
+        )
+    )
+    args.append(
+        (
+            impala_host,
+            impala_port,
+            T1_schema,
+            "uniform_1",
+            T1_join_col,
+            T2_schema,
+            "powerlaw_2",
+            T2_join_col,
+            target_schema,
+            p[0],
+            p[1],
+            num_samples,
+            overwrite,
+        )
+    )
+    args.append(
+        (
+            impala_host,
+            impala_port,
+            T1_schema,
+            "normal_1",
+            T1_join_col,
+            T2_schema,
+            "uniform_2",
+            T2_join_col,
+            target_schema,
+            p[0],
+            p[1],
+            num_samples,
+            overwrite,
+        )
+    )
+    args.append(
+        (
+            impala_host,
+            impala_port,
+            T1_schema,
+            "normal_1",
+            T1_join_col,
+            T2_schema,
+            "normal_2",
+            T2_join_col,
+            target_schema,
+            p[0],
+            p[1],
+            num_samples,
+            overwrite,
+        )
+    )
+    args.append(
+        (
+            impala_host,
+            impala_port,
+            T1_schema,
+            "normal_1",
+            T1_join_col,
+            T2_schema,
+            "powerlaw_2",
+            T2_join_col,
+            target_schema,
+            p[0],
+            p[1],
+            num_samples,
+            overwrite,
+        )
+    )
     args.append(
         (
             impala_host,

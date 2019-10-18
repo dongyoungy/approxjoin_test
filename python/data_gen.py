@@ -296,16 +296,7 @@ def create_table_data(num_rows,
             keys = keys.round().astype(int)
 
         elif type == 'powerlaw':
-            alpha = -1.5
-            minv = 1
-            maxv = num_keys
-            rand_keys = np.array(np.random.random(size=current_batch_size))
-            keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
-                    minv**(alpha + 1))**(1 / (alpha + 1))
-            keys = [math.floor(k) for k in keys]
-
-        elif type == 'powerlaw1':
-            alpha = -1.5
+            alpha = -3.5
             minv = 1
             maxv = num_keys
             rand_keys = np.array(np.random.random(size=current_batch_size))
@@ -314,7 +305,16 @@ def create_table_data(num_rows,
             keys = [math.floor(k) for k in keys]
 
         elif type == 'powerlaw2':
-            alpha = -3
+            alpha = -3.5
+            minv = 1
+            maxv = num_keys
+            rand_keys = np.array(np.random.random(size=current_batch_size))
+            keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+                    minv**(alpha + 1))**(1 / (alpha + 1))
+            keys = [math.floor(k) for k in keys]
+
+        elif type == 'powerlaw3':
+            alpha = -3.5
             minv = 1
             maxv = num_keys
             rand_keys = np.array(np.random.random(size=current_batch_size))
@@ -328,7 +328,8 @@ def create_table_data(num_rows,
 
         # generate data for two value columns
         #  val1 = np.random.normal(100, 25, current_batch_size).astype(int)
-        alpha = -1.5
+        # alpha = -1.5
+        alpha = -3.5
         minv = 1
         maxv = 1000
         rand_keys = np.array(np.random.random(size=current_batch_size))

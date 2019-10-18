@@ -25,7 +25,7 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 8
+num_proc = 16
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 # num_instacart_samples = 500
@@ -164,50 +164,25 @@ args.append(
 """
 
 # cent samples for synthetic
-# for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
-#     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-for leftDist in ["powerlaw_1"]:
-    for rightDist in ["uniform_2", "normal_2"]:
+for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
+    for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
         for agg in ["count", "sum", "avg"]:
-            args.append(
-                (
-                    impala_host,
-                    impala_port,
-                    "synthetic_1m",
-                    leftDist,
-                    "col1",
-                    "col2",
-                    "synthetic_1m",
-                    rightDist,
-                    "col1",
-                    None,
-                    "synthetic_1m_cent1",
-                    agg,
-                    num_synthetic_samples,
-                    overwrite,
-                )
-            )
-
-for leftDist in ["uniform_1", "normal_1"]:
-    for rightDist in ["powerlaw_2"]:
-        for agg in ["count", "sum", "avg"]:
-            args.append(
-                (
-                    impala_host,
-                    impala_port,
-                    "synthetic_1m",
-                    leftDist,
-                    "col1",
-                    "col2",
-                    "synthetic_1m",
-                    rightDist,
-                    "col1",
-                    None,
-                    "synthetic_1m_cent1",
-                    agg,
-                    num_synthetic_samples,
-                    overwrite,
-                )
+            print((leftDist, rightDist, agg))
+            sg.test_cent_sample_pair_from_impala_old(
+                impala_host,
+                impala_port,
+                "synthetic_1m",
+                leftDist,
+                "col1",
+                "col2",
+                "synthetic_1m",
+                rightDist,
+                "col1",
+                None,
+                "synthetic_1m_test1",
+                agg,
+                num_synthetic_samples,
+                overwrite,
             )
 # for leftDist in ["uniform_1", "normal_1"]:
 #     for rightDist in ["powerlaw3_2"]:

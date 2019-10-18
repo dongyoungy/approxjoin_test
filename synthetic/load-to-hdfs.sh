@@ -1,0 +1,25 @@
+#!/bin/bash
+hdfs dfs -mkdir -p /tmp/synthetic/uniform_1
+hdfs dfs -mkdir -p /tmp/synthetic/uniform_uniform_1
+hdfs dfs -mkdir -p /tmp/synthetic/uniform_normal_1
+hdfs dfs -mkdir -p /tmp/synthetic/uniform_powerlaw_1
+hdfs dfs -mkdir -p /tmp/synthetic/uniform_2
+hdfs dfs -mkdir -p /tmp/synthetic/normal_1
+hdfs dfs -mkdir -p /tmp/synthetic/normal_2
+hdfs dfs -mkdir -p /tmp/synthetic/powerlaw_1
+hdfs dfs -mkdir -p /tmp/synthetic/powerlaw_2
+hdfs dfs -mkdir -p /tmp/synthetic/uniform_max_var_2
+hdfs dfs -mkdir -p /tmp/synthetic/normal_max_var_2
+hdfs dfs -mkdir -p /tmp/synthetic/powerlaw_max_var_2
+hdfs dfs -put ./data/t_100000000n_1000000k_uniform_1.csv       /tmp/synthetic/uniform_1
+hdfs dfs -put ./data/t_100000000n_1000000k_uniform_uniform_1.csv       /tmp/synthetic/uniform_uniform_1
+hdfs dfs -put ./data/t_100000000n_1000000k_uniform_normal_1.csv       /tmp/synthetic/uniform_normal_1
+hdfs dfs -put ./data/t_100000000n_1000000k_uniform_powerlaw_1.csv       /tmp/synthetic/uniform_powerlaw_1
+hdfs dfs -put ./data/t_100000000n_1000000k_uniform_2.csv       /tmp/synthetic/uniform_2
+hdfs dfs -put ./data/t_100000000n_1000000k_normal_1.csv       /tmp/synthetic/normal_1
+hdfs dfs -put ./data/t_100000000n_1000000k_normal_2.csv       /tmp/synthetic/normal_2
+hdfs dfs -put ./data/t_100000000n_1000000k_powerlaw_1.csv       /tmp/synthetic/powerlaw_1
+hdfs dfs -put ./data/t_100000000n_1000000k_powerlaw_2.csv       /tmp/synthetic/powerlaw_2
+hdfs dfs -put ./data/t_100000000n_1000000k_uniform_max_var_2.csv       /tmp/synthetic/uniform_max_var_2
+hdfs dfs -put ./data/t_100000000n_1000000k_normal_max_var_2.csv       /tmp/synthetic/normal_max_var_2
+hdfs dfs -put ./data/t_100000000n_1000000k_powerlaw_max_var_2.csv       /tmp/synthetic/powerlaw_max_var_2

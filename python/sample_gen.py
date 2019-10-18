@@ -24,9 +24,9 @@ parquet_schema = "approxjoin_parquet"
 impala_host = "cp-2"
 impala_port = 21050
 fetch_size = 10000
-key_fetch_size = 10 * 1000 * 1000
-e1 = 0.001
-e2 = 0.001
+key_fetch_size = 10 * 1000 * 1000 + 1
+e1 = 0.05
+e2 = 0.05
 m = 1540483477
 modval = 2 ** 32
 
@@ -1422,7 +1422,7 @@ def create_preset_sample_pair_from_impala(
         SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 2) <= {5}
         """.format(
             target_schema,
             S2_name,
@@ -2177,7 +2177,7 @@ def create_dec_sample_pair_from_impala(
         SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 2) <= {5}
         """.format(
             sample_schema,
             S2_name,
@@ -2247,6 +2247,510 @@ def create_dec_sample_pair_from_impala(
         print("creating samples: {} s".format((t4 - t3).total_seconds()))
         print("total: {} s".format((t4 - t1).total_seconds()))
         print("end datetime: {}".format(str(t4)))
+
+
+def test_cent_sample_pair_from_impala_old(
+    host,
+    port,
+    T1_schema,
+    T1_table,
+    T1_join_col,
+    T1_agg_col,
+    T2_schema,
+    T2_table,
+    T2_join_col,
+    T1_where,
+    sample_schema,
+    agg_type,
+    num_sample,
+    overwrite=False,
+    print_time=False,
+):
+    p = 0
+    e1 = 0.01
+    e2 = 0.01
+
+    t1 = datetime.datetime.now()
+    # seed the rng
+    hash_val = int(hashlib.sha1(str(uuid.uuid1().bytes).encode()).hexdigest(), 16) % (
+        10 ** 8
+    )
+    np.random.seed(int(time.time()) + hash_val)
+
+    conn = impaladb.connect(host, port)
+    cur = conn.cursor()
+
+    T1_join_key_count = 0
+    T2_join_key_count = 0
+
+    # get # of of join keys in each table
+    T1_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
+        T1_join_col, T1_schema, T1_table
+    )
+    cur.execute(T1_join_key_count_sql)
+    results = cur.fetchall()
+    for row in results:
+        T1_join_key_count = row[0]
+    cur.close()
+
+    cur = conn.cursor()
+    T2_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
+        T2_join_col, T2_schema, T2_table
+    )
+    cur.execute(T2_join_key_count_sql)
+    results = cur.fetchall()
+    for row in results:
+        T2_join_key_count = row[0]
+    cur.close()
+
+    num_keys = max([T1_join_key_count, T2_join_key_count])
+
+    a_v = np.zeros((num_keys, 2))
+    b_v = np.zeros((num_keys, 2))
+    mu_v = np.zeros((num_keys, 2))
+    var_v = np.zeros((num_keys, 2))
+
+    keys = np.arange(1, num_keys + 1)
+    #  a_v[:, 0] = keys
+    #  b_v[:, 0] = keys
+    #  mu_v[:, 0] = keys
+    #  var_v[:, 0] = keys
+
+    cur = conn.cursor()
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(sample_schema))
+    T1_where = " WHERE {}".format(T1_where) if T1_where else ""
+    T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}) FROM {2}.{3} {4} GROUP BY {0};
+    """.format(
+        T1_join_col, T1_agg_col, T1_schema, T1_table, T1_where
+    )
+    cur.execute(T1_group_by_count_sql)
+
+    while True:
+        results = cur.fetchmany(fetch_size)
+        if not results:
+            break
+
+        for row in results:
+            col1 = row[0]
+            cnt = row[1]
+            mean = row[2]
+            var = row[3]
+            a_v[col1 - 1, 0] = cnt
+            mu_v[col1 - 1, 0] = mean
+            if var is None:
+                var = 0
+            var_v[col1 - 1, 0] = var
+    a_v[:, 1] = a_v[:, 0] ** 2
+    mu_v[:, 1] = mu_v[:, 0] ** 2
+    mu_v = np.nan_to_num(mu_v)
+    var_v = np.nan_to_num(var_v)
+
+    cur = conn.cursor()
+    T2_group_by_count_sql = """SELECT {0}, COUNT(*) FROM {1}.{2} GROUP BY {0};
+    """.format(
+        T2_join_col, T2_schema, T2_table
+    )
+    cur.execute(T2_group_by_count_sql)
+    while True:
+        results = cur.fetchmany(fetch_size)
+        if not results:
+            break
+
+        for row in results:
+            col1 = row[0]
+            cnt = row[1]
+            b_v[col1 - 1, 0] = cnt
+
+    b_v[:, 1] = b_v[:, 0] ** 2
+    t2 = datetime.datetime.now()
+
+    if agg_type == "count":
+        sum1 = sum(
+            a_v[:, 1] * b_v[:, 1]
+            - a_v[:, 1] * b_v[:, 0]
+            - a_v[:, 0] * b_v[:, 1]
+            + a_v[:, 0] * b_v[:, 0]
+        )
+        sum2 = sum(a_v[:, 0] * b_v[:, 0])
+        val = e1 * e2 * sum1 / sum2
+        if val > 0:
+            val = math.sqrt(val)
+        p = min([1, max([e1, e2, val])])
+    elif agg_type == "sum":
+        sum1 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
+        sum2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0])
+        sum3 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
+        sum4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+        sum5 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
+        val = math.sqrt(val) if val > 0 else val
+        p = min([1, max([e1, e2, val])])
+    elif agg_type == "avg":
+        A_denom = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0]) ** 2
+        A1 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0]) / A_denom
+        A2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / A_denom
+        A3 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0]) / A_denom
+        A4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1]) / A_denom
+        A = A1 + A2 - A3 - A4
+
+        B_denom = sum(a_v[:, 0] * b_v[:, 0]) * sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])
+        B1 = 1 / sum(a_v[:, 0] * b_v[:, 0])
+        B2 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 1]) / B_denom
+        B3 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 0]) / B_denom
+        B4 = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 1]) / B_denom
+        B = B1 + B2 - B3 - B4
+
+        C_denom = sum(a_v[:, 0] * b_v[:, 0]) ** 2
+        C1 = sum(a_v[:, 0] * b_v[:, 0]) / C_denom
+        C2 = sum(a_v[:, 1] * b_v[:, 1]) / C_denom
+        C3 = sum(a_v[:, 1] * b_v[:, 0]) / C_denom
+        C4 = sum(a_v[:, 0] * b_v[:, 1]) / C_denom
+        C = C1 + C2 - C3 - C4
+
+        # D = (1 / e1 * e2) * (A1 - 2 * B1 + C1)
+        D = (1 / (e1 * e2)) * (A1 - (2 * B1) + C1)
+        # print((e1, e2, A1, B1, C1))
+        # print((A, B, C, D))
+        val1 = A - (2 * B) + C
+        val2 = D
+
+        if val1 <= 0 and val2 > 0:
+            p = max(e1, e2)
+        elif val1 > 0 and val2 <= 0:
+            p = 1
+        elif val1 > 0 and val2 > 0:
+            # val = math.sqrt((A - 2 * B + C) / D)
+            val = math.sqrt(val1 / val2)
+            p = min([1, max([e1, e2, val])])
+        else:
+            p_minus = max(e1, e2)
+            p_plus = 1
+            pval1 = (1 / p_minus) * val1 + p_minus * val2
+            pval2 = (1 / p_plus) * val2 + p_plus * val2
+            if pval1 < pval2:
+                p = p_minus
+            else:
+                p = p_plus
+    else:
+        print("Unsupported operation")
+        return
+
+    q1 = e1 / p
+    q2 = e2 / p
+    t3 = datetime.datetime.now()
+    print((p, q1, q2))
+
+
+def create_cent_sample_pair_from_impala_old(
+    host,
+    port,
+    T1_schema,
+    T1_table,
+    T1_join_col,
+    T1_agg_col,
+    T2_schema,
+    T2_table,
+    T2_join_col,
+    T1_where,
+    sample_schema,
+    agg_type,
+    num_sample,
+    overwrite=False,
+    print_time=False,
+):
+    p = 0
+    e1 = 0.01
+    e2 = 0.01
+
+    t1 = datetime.datetime.now()
+    # seed the rng
+    hash_val = int(hashlib.sha1(str(uuid.uuid1().bytes).encode()).hexdigest(), 16) % (
+        10 ** 8
+    )
+    np.random.seed(int(time.time()) + hash_val)
+
+    conn = impaladb.connect(host, port)
+    cur = conn.cursor()
+
+    T1_join_key_count = 0
+    T2_join_key_count = 0
+
+    # get # of of join keys in each table
+    T1_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
+        T1_join_col, T1_schema, T1_table
+    )
+    cur.execute(T1_join_key_count_sql)
+    results = cur.fetchall()
+    for row in results:
+        T1_join_key_count = row[0]
+    cur.close()
+
+    cur = conn.cursor()
+    T2_join_key_count_sql = "SELECT MAX({0}) FROM {1}.{2}".format(
+        T2_join_col, T2_schema, T2_table
+    )
+    cur.execute(T2_join_key_count_sql)
+    results = cur.fetchall()
+    for row in results:
+        T2_join_key_count = row[0]
+    cur.close()
+
+    num_keys = max([T1_join_key_count, T2_join_key_count])
+
+    a_v = np.zeros((num_keys, 2))
+    b_v = np.zeros((num_keys, 2))
+    mu_v = np.zeros((num_keys, 2))
+    var_v = np.zeros((num_keys, 2))
+
+    keys = np.arange(1, num_keys + 1)
+    #  a_v[:, 0] = keys
+    #  b_v[:, 0] = keys
+    #  mu_v[:, 0] = keys
+    #  var_v[:, 0] = keys
+
+    cur = conn.cursor()
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {0}".format(sample_schema))
+    T1_where = " WHERE {}".format(T1_where) if T1_where else ""
+    T1_group_by_count_sql = """SELECT {0}, COUNT(*), avg({1}), variance({1}) FROM {2}.{3} {4} GROUP BY {0};
+    """.format(
+        T1_join_col, T1_agg_col, T1_schema, T1_table, T1_where
+    )
+    cur.execute(T1_group_by_count_sql)
+
+    while True:
+        results = cur.fetchmany(fetch_size)
+        if not results:
+            break
+
+        for row in results:
+            col1 = row[0]
+            cnt = row[1]
+            mean = row[2]
+            var = row[3]
+            a_v[col1 - 1, 0] = cnt
+            mu_v[col1 - 1, 0] = mean
+            if var is None:
+                var = 0
+            var_v[col1 - 1, 0] = var
+    a_v[:, 1] = a_v[:, 0] ** 2
+    mu_v[:, 1] = mu_v[:, 0] ** 2
+    mu_v = np.nan_to_num(mu_v)
+    var_v = np.nan_to_num(var_v)
+
+    cur = conn.cursor()
+    T2_group_by_count_sql = """SELECT {0}, COUNT(*) FROM {1}.{2} GROUP BY {0};
+    """.format(
+        T2_join_col, T2_schema, T2_table
+    )
+    cur.execute(T2_group_by_count_sql)
+    while True:
+        results = cur.fetchmany(fetch_size)
+        if not results:
+            break
+
+        for row in results:
+            col1 = row[0]
+            cnt = row[1]
+            b_v[col1 - 1, 0] = cnt
+
+    b_v[:, 1] = b_v[:, 0] ** 2
+    t2 = datetime.datetime.now()
+
+    if agg_type == "count":
+        sum1 = sum(
+            a_v[:, 1] * b_v[:, 1]
+            - a_v[:, 1] * b_v[:, 0]
+            - a_v[:, 0] * b_v[:, 1]
+            + a_v[:, 0] * b_v[:, 0]
+        )
+        sum2 = sum(a_v[:, 0] * b_v[:, 0])
+        val = e1 * e2 * sum1 / sum2
+        if val > 0:
+            val = math.sqrt(val)
+        p = min([1, max([e1, e2, val])])
+    elif agg_type == "sum":
+        sum1 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1])
+        sum2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0])
+        sum3 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1])
+        sum4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+        sum5 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0])
+        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
+        val = math.sqrt(val) if val > 0 else val
+        p = min([1, max([e1, e2, val])])
+    elif agg_type == "avg":
+        A_denom = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0]) ** 2
+        A1 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 0]) / A_denom
+        A2 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 1]) / A_denom
+        A3 = sum(a_v[:, 1] * mu_v[:, 1] * b_v[:, 0]) / A_denom
+        A4 = sum(a_v[:, 0] * (mu_v[:, 1] + var_v[:, 0]) * b_v[:, 1]) / A_denom
+        A = A1 + A2 - A3 - A4
+
+        B_denom = sum(a_v[:, 0] * b_v[:, 0]) * sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 0])
+        B1 = 1 / sum(a_v[:, 0] * b_v[:, 0])
+        B2 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 1]) / B_denom
+        B3 = sum(a_v[:, 1] * mu_v[:, 0] * b_v[:, 0]) / B_denom
+        B4 = sum(a_v[:, 0] * mu_v[:, 0] * b_v[:, 1]) / B_denom
+        B = B1 + B2 - B3 - B4
+
+        C_denom = sum(a_v[:, 0] * b_v[:, 0]) ** 2
+        C1 = sum(a_v[:, 0] * b_v[:, 0]) / C_denom
+        C2 = sum(a_v[:, 1] * b_v[:, 1]) / C_denom
+        C3 = sum(a_v[:, 1] * b_v[:, 0]) / C_denom
+        C4 = sum(a_v[:, 0] * b_v[:, 1]) / C_denom
+        C = C1 + C2 - C3 - C4
+
+        # D = (1 / e1 * e2) * (A1 - 2 * B1 + C1)
+        D = (1 / (e1 * e2)) * (A1 - (2 * B1) + C1)
+        # print((e1, e2, A1, B1, C1))
+        # print((A, B, C, D))
+        val1 = A - (2 * B) + C
+        val2 = D
+
+        if val1 <= 0 and val2 > 0:
+            p = max(e1, e2)
+        elif val1 > 0 and val2 <= 0:
+            p = 1
+        elif val1 > 0 and val2 > 0:
+            # val = math.sqrt((A - 2 * B + C) / D)
+            val = math.sqrt(val1 / val2)
+            p = min([1, max([e1, e2, val])])
+        else:
+            p_minus = max(e1, e2)
+            p_plus = 1
+            pval1 = (1 / p_minus) * val1 + p_minus * val2
+            pval2 = (1 / p_plus) * val2 + p_plus * val2
+            if pval1 < pval2:
+                p = p_minus
+            else:
+                p = p_plus
+    else:
+        print("Unsupported operation")
+        return
+
+    q1 = e1 / p
+    q2 = e2 / p
+    t3 = datetime.datetime.now()
+    # print ((val1, val2, p))
+    # for pval in [0.01, 0.015, 0.03, 0.333, 0.666, 1]:
+    # est = estimate_variance(a_v, b_v, mu_v, var_v, p)
+    # print((T1_table, T2_table, est))
+    # return
+    cur = conn.cursor()
+    cur.execute("CREATE SCHEMA IF NOT EXISTS {}".format(sample_schema))
+
+    tables = get_existing_tables(conn, sample_schema)
+    m = 1540483477
+    modval = 2 ** 32
+    for i in range(1, num_sample + 1):
+        hash_num = np.random.randint(1000 * 1000)
+        hash_num2 = np.random.randint(1000 * 1000)
+        S1_name = "s__{}__{}__{}__{}__{}__{}__{}".format(
+            T1_table, T2_table, T1_join_col, T1_agg_col, agg_type, i, 1
+        )
+        S2_name = "s__{}__{}__{}__{}__{}__{}".format(
+            T1_table, T2_table, T2_join_col, agg_type, i, 2
+        )
+
+        if overwrite:
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, S1_name))
+            cur.execute("DROP TABLE IF EXISTS {}.{}".format(sample_schema, S2_name))
+            conn.commit()
+        else:
+            if S1_name in tables and S2_name in tables:
+                continue
+
+        create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        """.format(
+            sample_schema,
+            S1_name,
+            T1_schema,
+            T1_table,
+            p,
+            q1,
+            hash_num + i,
+            T1_join_col,
+            hash_num2,
+            m,
+            modval,
+        )
+        create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
+        FROM {2}.{3}
+        ) tmp
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 2) <= {5}
+        """.format(
+            sample_schema,
+            S2_name,
+            T2_schema,
+            T2_table,
+            p,
+            q2,
+            hash_num + i,
+            T2_join_col,
+            hash_num2,
+            m,
+            modval,
+        )
+
+        #  create_S1_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 1) <= {5}
+        #  """.format(sample_schema, S1_name, T1_schema, T1_table, p, q1,
+        #  hash_num + i, T1_join_col)
+        #
+        #  create_S2_sql = """CREATE TABLE IF NOT EXISTS {0}.{1} STORED AS PARQUET AS SELECT * FROM (
+        #  SELECT *, pmod(fnv_hash({7} + {6}), 1000*1000)+1 as pval
+        #  FROM {2}.{3}
+        #  ) tmp
+        #  WHERE pval <= {4} * 1000*1000 and rand(unix_timestamp() + {6} + 2) <= {5}
+        #  """.format(sample_schema, S2_name, T2_schema, T2_table, p, q2,
+        #  hash_num + i, T2_join_col)
+        cur.execute(create_S1_sql)
+        cur.execute(create_S2_sql)
+        conn.commit()
+
+        #  cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S1_name))
+        #  cur.execute("COMPUTE STATS {}.{}".format(sample_schema, S2_name))
+
+    # add metadata
+    create_metatable_sql = """CREATE TABLE IF NOT EXISTS {}.meta (t1_name STRING, t2_name STRING, agg STRING,
+    t1_join_col STRING, t2_join_col STRING, t1_agg_col STRING, t1_where_col STRING,
+    p DOUBLE, q DOUBLE, ts TIMESTAMP ) STORED AS PARQUET
+    """.format(
+        sample_schema
+    )
+    cur.execute(create_metatable_sql)
+
+    ts = int(time.time())
+    insert_meta = """INSERT INTO TABLE {}.meta VALUES ('{}','{}','{}','{}','{}','{}',{},{},{},now())""".format(
+        sample_schema,
+        T1_table,
+        T2_table,
+        agg_type,
+        T1_join_col,
+        T2_join_col,
+        T1_agg_col,
+        "NULL",
+        p,
+        q1,
+    )
+    cur.execute(insert_meta)
+    cur.close()
+    t4 = datetime.datetime.now()
+    if print_time:
+        print("start datetime: {}".format(str(t1)))
+        print("collecting frequency info: {} s".format((t2 - t1).total_seconds()))
+        print("calculating p and q: {} s".format((t3 - t2).total_seconds()))
+        print("creating samples: {} s".format((t4 - t3).total_seconds()))
+        print("total: {} s".format((t4 - t1).total_seconds()))
+        print("end datetime: {}".format(str(t4)))
+
 
 
 def create_cent_sample_pair_from_impala(
@@ -2325,8 +2829,8 @@ def create_cent_sample_pair_from_impala(
     C3 = 0
     C4 = 0
 
-    e1 = 0.001
-    e2 = 0.001
+    e1 = 0.05
+    e2 = 0.05
 
     for i in range(num_batch):
         a_v = np.zeros((key_fetch_size, 2))
@@ -2334,7 +2838,7 @@ def create_cent_sample_pair_from_impala(
         mu_v = np.zeros((key_fetch_size, 2))
         var_v = np.zeros((key_fetch_size, 2))
 
-        keys = np.arange(i * key_fetch_size + 1, (i+1) * key_fetch_size + 1)
+        keys = np.arange(i * key_fetch_size + 1, (i + 1) * key_fetch_size + 1)
 
         cur = conn.cursor()
         T1_where = " WHERE {}".format(T1_where) if T1_where else ""
@@ -2343,10 +2847,15 @@ def create_cent_sample_pair_from_impala(
         GROUP BY {0}
         ORDER BY {0}
         """.format(
-            T1_join_col, T1_agg_col, T1_schema, T1_table, T1_where, i * key_fetch_size, (i+1) * key_fetch_size
+            T1_join_col,
+            T1_agg_col,
+            T1_schema,
+            T1_table,
+            T1_where,
+            i * key_fetch_size,
+            (i + 1) * key_fetch_size,
         )
         cur.execute(T1_group_by_count_sql)
-
 
         while True:
             results = cur.fetchmany(fetch_size)
@@ -2375,7 +2884,11 @@ def create_cent_sample_pair_from_impala(
         WHERE {0} >= {3} AND {0} < {4}
         GROUP BY {0} ORDER BY {0};
         """.format(
-            T2_join_col, T2_schema, T2_table, i * key_fetch_size, (i+1) * key_fetch_size
+            T2_join_col,
+            T2_schema,
+            T2_table,
+            i * key_fetch_size,
+            (i + 1) * key_fetch_size,
         )
         cur.execute(T2_group_by_count_sql)
         while True:
@@ -2429,34 +2942,34 @@ def create_cent_sample_pair_from_impala(
             return
 
     if agg_type == "count":
-        val = e1 * e2 * sum1 / sum2
+        val = e1 * e2 * sum1 / sum2 if sum2 != 0 else 0
         if val > 0:
             val = math.sqrt(val)
         p = min([1, max([e1, e2, val])])
     elif agg_type == "sum":
-        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5
+        val = e1 * e2 * (sum1 - sum2 - sum3 + sum4) / sum5 if sum5 != 0 else 0
         val = math.sqrt(val) if val > 0 else val
         p = min([1, max([e1, e2, val])])
     elif agg_type == "avg":
         A_denom = A_denom ** 2
-        A1 = A1 / A_denom
-        A2 = A2 / A_denom
-        A3 = A3 / A_denom
-        A4 = A4 / A_denom
+        A1 = A1 / A_denom if A_denom != 0 else 0
+        A2 = A2 / A_denom if A_denom != 0 else 0
+        A3 = A3 / A_denom if A_denom != 0 else 0
+        A4 = A4 / A_denom if A_denom != 0 else 0
         A = A1 + A2 - A3 - A4
 
         B_denom = B_denom1 * B_denom2
-        B1 = 1 / B1
-        B2 = B2 / B_denom
-        B3 = B3 / B_denom
-        B4 = B4 / B_denom
+        B1 = 1 / B1 if B1 != 0 else 0
+        B2 = B2 / B_denom if B_denom != 0 else 0
+        B2 = B2 / B_denom if B_denom != 0 else 0
+        B2 = B2 / B_denom if B_denom != 0 else 0
         B = B1 + B2 - B3 - B4
 
         C_denom = C_denom ** 2
-        C1 = C1 / C_denom
-        C2 = C2 / C_denom
-        C3 = C3 / C_denom
-        C4 = C4 / C_denom
+        C1 = C1 / C_denom if C_denom != 0 else 0
+        C1 = C1 / C_denom if C_denom != 0 else 0
+        C1 = C1 / C_denom if C_denom != 0 else 0
+        C1 = C1 / C_denom if C_denom != 0 else 0
         C = C1 + C2 - C3 - C4
 
         # D = (1 / e1 * e2) * (A1 - 2 * B1 + C1)
@@ -2538,7 +3051,7 @@ def create_cent_sample_pair_from_impala(
         SELECT *, pmod(bitxor(bitxor({7} * {9}, rotateright({7} * {9}, 24)) * {9}, {6} * {9}), {10}) as pval
         FROM {2}.{3}
         ) tmp
-        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 1) <= {5}
+        WHERE pval <= {4} * {10} and rand(unix_timestamp() + {6} + 2) <= {5}
         """.format(
             sample_schema,
             S2_name,
@@ -3944,7 +4457,7 @@ def create_cent_stratified_sample_pair_from_impala_new(
         )
         cur.execute(insert_group_info)
 
-    for grp in range(0, num_group+1):
+    for grp in range(0, num_group + 1):
         if grp in major_group:
             p1 = p
             q1 = g_v[grp, 2] / p1

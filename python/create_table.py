@@ -4,24 +4,24 @@ import multiprocessing as mp
 args = []
 where_args = []
 max_var_args = []
-num_proc = 3
+num_proc = 16
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 
-#  for dist in ['uniform', 'normal', 'powerlaw']:
-for dist in ["normal"]:
-    #  args.append((10 * 1000 * 1000, 1 * 1000 * 1000, dist, 1, False, True))
-    #  args.append((10 * 1000 * 1000, 1 * 1000 * 1000, dist, 2, False, True))
-    #  args.append((1000 * 1000,  100 * 1000, dist, 2, False, True))
-    #  max_var_args.append(
-    #  (100 * 1000 * 1000, 10 * 1000 * 1000, dist, False, True))
-    for rel in ["powerlaw2"]:
-        where_args.append(
-            (100 * 1000 * 1000, 10 * 1000 * 1000, dist, rel, 100, 1, False, True)
-        )
-        #  dg.create_table_data_for_where(10 * 1000 * 1000, 1 * 1000 * 1000, dist,
-        #  rel, 10, 1, False, True)
-        #  dg.create_table_data_for_where(10 * 1000 * 1000, 10 * 1000 * 1000,
-        #  dist, rel, 10, 1, False, True)
+for dist in ["uniform", "normal", "powerlaw"]:
+    # for dist in ["powerlaw2", "powerlaw3"]:
+    args.append((1000 * 1000, 10 * 1000, dist, 1, False, True))
+    args.append((1000 * 1000, 10 * 1000, dist, 2, False, True))
+#  args.append((1000 * 1000,  100 * 1000, dist, 2, False, True))
+#  max_var_args.append(
+#  (100 * 1000 * 1000, 10 * 1000 * 1000, dist, False, True))
+# for rel in ["powerlaw2"]:
+#     where_args.append(
+#         (100 * 1000 * 1000, 10 * 1000 * 1000, dist, rel, 100, 1, False, True)
+#     )
+#  dg.create_table_data_for_where(10 * 1000 * 1000, 1 * 1000 * 1000, dist,
+#  rel, 10, 1, False, True)
+#  dg.create_table_data_for_where(10 * 1000 * 1000, 10 * 1000 * 1000,
+#  dist, rel, 10, 1, False, True)
 
 #  for arg in args:
 #  pool.apply_async(dg.create_table_data, arg)

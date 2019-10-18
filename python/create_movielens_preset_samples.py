@@ -25,43 +25,78 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 16
+num_proc = 8
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
-num_samples = 500
+num_samples = 2000
 overwrite = False
 args = []
 results = []
 
-prob = []
-prob.append((0.01, 1))
-prob.append((0.015, 0.666))
-prob.append((0.03, 0.333))
-prob.append((0.333, 0.03))
-prob.append((0.666, 0.015))
-prob.append((1, 0.01))
+# prob = []
+# prob.append((0.01, 1))
+# prob.append((0.015, 0.666))
+# prob.append((0.03, 0.333))
+# prob.append((0.333, 0.03))
+# prob.append((0.666, 0.015))
+# prob.append((1, 0.01))
 
-T1_schema = 'movielens'
-T1_table = 'movies'
-T1_join_col = 'movieId'
-T2_schema = 'movielens'
-T2_table = 'ratings'
-T2_join_col = 'movieId'
-target_schema = 'movielens_preset2'
-impala_host = 'cp-4'
+# for 5%
+# prob = []
+# prob.append((0.05, 1))
+# prob.append((0.075, 0.666))
+# prob.append((0.15, 0.333))
+# prob.append((0.333, 0.15))
+# prob.append((0.666, 0.075))
+# prob.append((1, 0.05))
+
+# for 10%
+prob = []
+prob.append((0.1, 1))
+prob.append((0.15, 0.666))
+prob.append((0.3, 0.333))
+prob.append((0.333, 0.3))
+prob.append((0.666, 0.15))
+prob.append((1, 0.1))
+
+T1_schema = "movielens"
+T1_table = "movies"
+T1_join_col = "movieId"
+T2_schema = "movielens"
+T2_table = "ratings"
+T2_join_col = "movieId"
+target_schema = "movielens_preset3_10p"
+impala_host = "cp-4"
 impala_port = 21050
 
 for p in prob:
-    args.append((impala_host, impala_port, T1_schema, T1_table, T1_join_col,
-                 T2_schema, T2_table, T2_join_col, target_schema, p[0], p[1],
-                 num_samples, overwrite))
+    args.append(
+        (
+            impala_host,
+            impala_port,
+            T1_schema,
+            T1_table,
+            T1_join_col,
+            T2_schema,
+            T2_table,
+            T2_join_col,
+            target_schema,
+            p[0],
+            p[1],
+            num_samples,
+            overwrite,
+        )
+    )
 
 for arg in args:
     results.append(
-        pool.apply_async(sg.create_preset_sample_pair_from_impala,
-                         arg,
-                         callback=callback_success,
-                         error_callback=callback_error))
+        pool.apply_async(
+            sg.create_preset_sample_pair_from_impala,
+            arg,
+            callback=callback_success,
+            error_callback=callback_error,
+        )
+    )
 pool.close()
 pool.join()
 

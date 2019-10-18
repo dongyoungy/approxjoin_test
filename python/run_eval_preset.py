@@ -27,30 +27,48 @@ def callback_success(result):
 
 
 prob = []
-# prob.append((0.01, 1))
-# prob.append((0.015, 0.666))
-# prob.append((0.03, 0.333))
-# prob.append((0.333, 0.03))
-# prob.append((0.666, 0.015))
-# prob.append((1, 0.01))
+prob.append((0.01, 1))
+prob.append((0.015, 0.666))
+prob.append((0.03, 0.333))
+prob.append((0.333, 0.03))
+prob.append((0.666, 0.015))
+prob.append((1, 0.01))
 
 # 0.1%
-prob.append((0.001, 1))
-prob.append((0.0015, 0.666))
-prob.append((0.003, 0.333))
-prob.append((0.333, 0.003))
-prob.append((0.666, 0.0015))
-prob.append((1, 0.001))
+# prob.append((0.001, 1))
+# prob.append((0.0015, 0.666))
+# prob.append((0.003, 0.333))
+# prob.append((0.333, 0.003))
+# prob.append((0.666, 0.0015))
+# prob.append((1, 0.001))
 
-num_proc = 10
+# for 5%
+# prob = []
+# prob.append((0.05, 1))
+# prob.append((0.075, 0.666))
+# prob.append((0.15, 0.333))
+# prob.append((0.333, 0.15))
+# prob.append((0.666, 0.075))
+# prob.append((1, 0.05))
+
+# for 10%
+# prob = []
+# prob.append((0.1, 1))
+# prob.append((0.15, 0.666))
+# prob.append((0.3, 0.333))
+# prob.append((0.333, 0.3))
+# prob.append((0.666, 0.15))
+# prob.append((1, 0.1))
+
+num_proc = 16
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 num_instacart_samples = 500
-num_movielens_samples = 500
+num_movielens_samples = 2000
 num_tpch_samples = 500
-num_synthetic_samples = 500
+num_synthetic_samples = 2000
 overwrite = False
-impala_host = "cp-4"
+impala_host = "cp-12"
 impala_port = 21050
 
 synthetic_ours = []
@@ -74,15 +92,54 @@ if overwrite:
     es.drop_result_table(conn, "tpch100g_cent_sample")
     es.drop_result_table(conn, "tpch100g_preset")
 
-# # evaluate synthetic (preset)
-# for leftDist in ['uniform_1', 'normal_1', 'powerlaw_1']:
-#     for rightDist in ['uniform_2', 'normal_2', 'powerlaw_2']:
-#         for agg in ['count', 'sum', 'avg']:
-#             for p in prob:
-#                 synthetic_preset.append(
-#                     (impala_host, impala_port, 'synthetic_10m',
-#                         'synthetic_10m_preset2', agg, leftDist, rightDist, p[0],
-#                         p[1], num_synthetic_samples, False))
+dists = []
+dists.append(("uniform_1", "powerlaw3_2"))
+dists.append(("normal_1", "powerlaw3_2"))
+dists.append(("powerlaw3_1", "uniform_2"))
+dists.append(("powerlaw3_1", "normal_2"))
+dists.append(("powerlaw3_1", "powerlaw3_2"))
+
+# evaluate synthetic (preset)
+for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
+    for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
+        for agg in ["count", "sum", "avg"]:
+            for p in prob:
+                synthetic_preset.append(
+                    (
+                        impala_host,
+                        impala_port,
+                        "synthetic_1m",
+                        "synthetic_1m_preset1",
+                        agg,
+                        leftDist,
+                        rightDist,
+                        p[0],
+                        p[1],
+                        num_synthetic_samples,
+                        False,
+                    )
+                )
+
+# for d in dists:
+#     leftDist = d[0]
+#     rightDist = d[1]
+#     for agg in ["count", "sum", "avg"]:
+#         for p in prob:
+#             synthetic_preset.append(
+#                 (
+#                     impala_host,
+#                     impala_port,
+#                     "synthetic_10m",
+#                     "synthetic_10m_preset2_2",
+#                     agg,
+#                     leftDist,
+#                     rightDist,
+#                     p[0],
+#                     p[1],
+#                     num_synthetic_samples,
+#                     False,
+#                 )
+#             )
 
 # # evaluate instacart (preset)
 # for agg in ['count', 'sum', 'avg']:
@@ -91,29 +148,39 @@ if overwrite:
 #             (impala_host, impala_port, 'instacart', 'instacart_preset2',
 #              agg, p[0], p[1], num_instacart_samples, False))
 
-# # evaluate movielens (preset)
-# for agg in ['count', 'sum', 'avg']:
+# evaluate movielens (preset)
+# for agg in ["count", "sum", "avg"]:
 #     for p in prob:
 #         movielens_preset.append(
-#             (impala_host, impala_port, 'movielens', 'movielens_preset2',
-#              agg, p[0], p[1], num_movielens_samples, False))
+#             (
+#                 impala_host,
+#                 impala_port,
+#                 "movielens",
+#                 "movielens_preset3_10p",
+#                 agg,
+#                 p[0],
+#                 p[1],
+#                 num_movielens_samples,
+#                 False,
+#             )
+#         )
 
 # evaluate tpch (preset)
-for agg in ["count", "sum", "avg"]:
-    for p in prob:
-        tpch_preset.append(
-            (
-                impala_host,
-                impala_port,
-                "tpch1000g_parquet",
-                "tpch1000g_preset1",
-                agg,
-                p[0],
-                p[1],
-                num_tpch_samples,
-                False,
-            )
-        )
+# for agg in ["count", "sum", "avg"]:
+#     for p in prob:
+#         tpch_preset.append(
+#             (
+#                 impala_host,
+#                 impala_port,
+#                 "tpch1000g_parquet",
+#                 "tpch1000g_preset1",
+#                 agg,
+#                 p[0],
+#                 p[1],
+#                 num_tpch_samples,
+#                 False,
+#             )
+#         )
 
 # run
 results = []

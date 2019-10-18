@@ -282,8 +282,6 @@ def run_synthetic_ours(
         t2_join_col = row[3]
         t1_agg_col = row[4]
 
-    print((p, q))
-
     # get actual value first
     cur = conn.cursor()
     if query_type == "count":  # count
@@ -374,7 +372,7 @@ def run_synthetic_ours(
         # record result
         cur = conn.cursor()
         add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
-        '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
+        '{}', {}, '{}', '{}', {:.5f}, {:.5f}, {}, {}, now()
         )""".format(
             sample_schema,
             temp_table,
@@ -1025,10 +1023,10 @@ def run_synthetic_preset(
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+        S1_name = "s__{}__{}__{:.5f}p__{:.5f}q_{}_{}".format(
             left_dist, right_dist, p, q, i, 1
         )
-        S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+        S2_name = "s__{}__{}__{:.5f}p__{:.5f}q_{}_{}".format(
             left_dist, right_dist, p, q, i, 2
         )
         S1_name = S1_name.replace(".", "_")
@@ -2390,7 +2388,7 @@ def run_movielens_ours(
         # record result
         cur = conn.cursor()
         add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
-        '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
+        '{}', {}, '{}', '{}', {:.5f}, {:.5f}, {}, {}, now()
         )""".format(
             sample_schema,
             temp_table,
@@ -2491,10 +2489,10 @@ def run_movielens_preset(
 
     # get estimate for each sample pair
     for i in range(start_idx, num_sample + 1):
-        S1_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+        S1_name = "s__{}__{}__{:.5f}p__{:.5f}q_{}_{}".format(
             "movies", "ratings", p, q, i, 1
         )
-        S2_name = "s__{}__{}__{:.3f}p__{:.3f}q_{}_{}".format(
+        S2_name = "s__{}__{}__{:.5f}p__{:.5f}q_{}_{}".format(
             "movies", "ratings", p, q, i, 2
         )
         S1_name = S1_name.replace(".", "_")
