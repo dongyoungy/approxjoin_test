@@ -27,20 +27,20 @@ def callback_success(result):
 
 
 prob = []
-prob.append((0.01, 1))
-prob.append((0.015, 0.666))
-prob.append((0.03, 0.333))
-prob.append((0.333, 0.03))
-prob.append((0.666, 0.015))
-prob.append((1, 0.01))
+# prob.append((0.01, 1))
+# prob.append((0.015, 0.666))
+# prob.append((0.03, 0.333))
+# prob.append((0.333, 0.03))
+# prob.append((0.666, 0.015))
+# prob.append((1, 0.01))
 
 # 0.1%
-# prob.append((0.001, 1))
-# prob.append((0.0015, 0.666))
-# prob.append((0.003, 0.333))
-# prob.append((0.333, 0.003))
-# prob.append((0.666, 0.0015))
-# prob.append((1, 0.001))
+prob.append((0.001, 1))
+prob.append((0.0015, 0.666))
+prob.append((0.003, 0.333))
+prob.append((0.333, 0.003))
+prob.append((0.666, 0.0015))
+prob.append((1, 0.001))
 
 # for 5%
 # prob = []
@@ -99,17 +99,43 @@ dists.append(("powerlaw3_1", "uniform_2"))
 dists.append(("powerlaw3_1", "normal_2"))
 dists.append(("powerlaw3_1", "powerlaw3_2"))
 
+idx = 1
 # evaluate synthetic (preset)
-for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
-    for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-        for agg in ["count", "sum", "avg"]:
-            for p in prob:
+# for leftDist in ["uniform1_1", "normal1_1", "powerlaw1_1"]:
+#     for rightDist in ["uniform1_2", "normal1_2", "powerlaw1_2"]:
+#         for agg in ["count", "sum", "avg"]:
+# for leftDist in ["t_1_uniform1_1", "t_3_normal1_1", "t_5_powerlaw1_1"]:
+#     for rightDist in ["t_1_uniform1_2", "t_3_normal1_2", "t_5_powerlaw1_2"]:
+#         for agg in ["count", "sum", "avg"]:
+#             for p in prob:
+#                 synthetic_preset.append(
+#                     (
+#                         impala_host,
+#                         impala_port,
+#                         "synthetic_100m",
+#                         "synthetic_100m_preset3",
+#                         agg,
+#                         leftDist,
+#                         rightDist,
+#                         p[0],
+#                         p[1],
+#                         num_synthetic_samples,
+#                         False,
+#                     )
+#                 )
+
+for agg in ["count", "sum", "avg"]:
+    for p in prob:
+        for leftDist in ["t_1_uniform1_1", "t_3_normal1_1", "t_5_powerlaw1_1"]:
+            for rightDist in ["t_3_normal1_2", "t_5_powerlaw1_2"]:
+                host = "cp-" + str(3 + (idx % 12))
+                idx = idx + 1
                 synthetic_preset.append(
                     (
-                        impala_host,
+                        host,
                         impala_port,
-                        "synthetic_1m",
-                        "synthetic_1m_preset1",
+                        "synthetic_100m",
+                        "synthetic_100m_preset3",
                         agg,
                         leftDist,
                         rightDist,
@@ -120,6 +146,73 @@ for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
                     )
                 )
 
+for agg in ["count", "sum", "avg"]:
+    for p in prob:
+        for leftDist in ["t_3_normal1_1", "t_5_powerlaw1_1"]:
+            for rightDist in ["t_1_uniform1_2", "t_3_normal1_2", "t_5_powerlaw1_2"]:
+                host = "cp-" + str(3 + (idx % 12))
+                idx = idx + 1
+                synthetic_preset.append(
+                    (
+                        host,
+                        impala_port,
+                        "synthetic_100m",
+                        "synthetic_100m_preset3",
+                        agg,
+                        leftDist,
+                        rightDist,
+                        p[0],
+                        p[1],
+                        num_synthetic_samples,
+                        False,
+                    )
+                )
+
+for agg in ["count", "sum", "avg"]:
+    for p in prob:
+        for leftDist in ["t_6_powerlaw2_1"]:
+            for rightDist in ["t_2_uniform2_2", "t_4_normal2_2", "t_6_powerlaw2_2"]:
+                host = "cp-" + str(3 + (idx % 12))
+                idx = idx + 1
+                synthetic_preset.append(
+                    (
+                        host,
+                        impala_port,
+                        "synthetic_100m",
+                        "synthetic_100m_preset3",
+                        agg,
+                        leftDist,
+                        rightDist,
+                        p[0],
+                        p[1],
+                        num_synthetic_samples,
+                        False,
+                    )
+                )
+
+# for leftDist in ["uniform5_1", "normal5_1"]:
+#     for rightDist in ["powerlaw5_2"]:
+for agg in ["count", "sum", "avg"]:
+    for p in prob:
+        for leftDist in ["t_2_uniform2_1", "t_4_normal2_1"]:
+            for rightDist in ["t_6_powerlaw2_2"]:
+                host = "cp-" + str(3 + (idx % 12))
+                idx = idx + 1
+                synthetic_preset.append(
+                    (
+                        host,
+                        impala_port,
+                        "synthetic_100m",
+                        "synthetic_100m_preset3",
+                        agg,
+                        leftDist,
+                        rightDist,
+                        p[0],
+                        p[1],
+                        num_synthetic_samples,
+                        False,
+                    )
+                )
 # for d in dists:
 #     leftDist = d[0]
 #     rightDist = d[1]
@@ -173,7 +266,7 @@ for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
 #                 impala_host,
 #                 impala_port,
 #                 "tpch1000g_parquet",
-#                 "tpch1000g_preset1",
+#                 "tpch1000g_preset2",
 #                 agg,
 #                 p[0],
 #                 p[1],

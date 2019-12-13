@@ -1067,7 +1067,7 @@ def run_synthetic_preset(
         # record result
         cur = conn.cursor()
         add_result_sql = """INSERT INTO TABLE {}.{} VALUES (
-        '{}', {}, '{}', '{}', {:.3f}, {:.3f}, {}, {}, now()
+        '{}', {}, '{}', '{}', {:.5f}, {:.5f}, {}, {}, now()
         )""".format(
             sample_schema,
             temp_table,
@@ -2291,7 +2291,7 @@ def run_movielens_ours(
     if query_type == "count":  # count
         actual_sql = """SELECT COUNT(*) FROM {0}.{1} t1 JOIN {0}.{2} t2 ON
         t1.movieid = t2.movieid
-        WHERE t2.genres NOT LIKE '%Documentary%'""".format(
+        WHERE t2.genres NOT LIKE 'jDocumentary%'""".format(
             table_schema, "ratings", "movies"
         )
         cur.execute(actual_sql)
@@ -2553,7 +2553,7 @@ def run_movielens_preset(
             actual,
             estimate,
         )
-        cur.execute(add_result_sql)
+        cur.execute(add_result_sqlkk)
         cur.close()
 
     cur = conn.cursor()

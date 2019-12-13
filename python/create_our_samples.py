@@ -25,12 +25,12 @@ def callback_success(result):
     print("Success")
 
 
-num_proc = 8
+num_proc = 16
 
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 # num_instacart_samples = 500
-num_movielens_samples = 2000
-num_tpch_samples = 500
+# num_movielens_samples = 2000
+# num_tpch_samples = 500
 num_synthetic_samples = 2000
 overwrite = False
 dec_args = []
@@ -164,88 +164,88 @@ args.append(
 """
 
 # cent samples for synthetic
-# for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
-#     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-for leftDist in ["powerlaw_1"]:
-    for rightDist in ["uniform_2", "normal_2"]:
+for leftDist in ["t_1_uniform1_1", "t_3_normal1_1", "t_5_powerlaw1_1"]:
+    for rightDist in ["t_1_uniform1_2", "t_3_normal1_2", "t_5_powerlaw1_2"]:
         for agg in ["count", "sum", "avg"]:
             args.append(
                 (
                     impala_host,
                     impala_port,
-                    "synthetic_1m",
+                    "synthetic_100m",
                     leftDist,
                     "col1",
                     "col2",
-                    "synthetic_1m",
+                    "synthetic_100m",
                     rightDist,
                     "col1",
                     None,
-                    "synthetic_1m_cent1",
+                    "synthetic_100m_cent3",
                     agg,
                     num_synthetic_samples,
                     overwrite,
                 )
             )
 
-for leftDist in ["uniform_1", "normal_1"]:
-    for rightDist in ["powerlaw_2"]:
+for leftDist in ["t_6_powerlaw2_1"]:
+    for rightDist in ["t_2_uniform2_2", "t_4_normal2_2", "t_6_powerlaw2_2"]:
         for agg in ["count", "sum", "avg"]:
             args.append(
                 (
                     impala_host,
                     impala_port,
-                    "synthetic_1m",
+                    "synthetic_100m",
                     leftDist,
                     "col1",
                     "col2",
-                    "synthetic_1m",
+                    "synthetic_100m",
                     rightDist,
                     "col1",
                     None,
-                    "synthetic_1m_cent1",
+                    "synthetic_100m_cent3",
                     agg,
                     num_synthetic_samples,
                     overwrite,
                 )
             )
-# for leftDist in ["uniform_1", "normal_1"]:
+
+for leftDist in ["t_2_uniform2_1", "t_4_normal2_1"]:
+    for rightDist in ["t_6_powerlaw2_2"]:
+        for agg in ["count", "sum", "avg"]:
+            args.append(
+                (
+                    impala_host,
+                    impala_port,
+                    "synthetic_100m",
+                    leftDist,
+                    "col1",
+                    "col2",
+                    "synthetic_100m",
+                    rightDist,
+                    "col1",
+                    None,
+                    "synthetic_100m_cent3",
+                    agg,
+                    num_synthetic_samples,
+                    overwrite,
+                )
+            )
+
+# for leftDist in ["uniform3_1", "normal3_1"]:
 #     for rightDist in ["powerlaw3_2"]:
 #         for agg in ["count", "sum", "avg"]:
 #             args.append(
 #                 (
 #                     impala_host,
 #                     impala_port,
-#                     "synthetic_10m",
+#                     "synthetic_100m",
 #                     leftDist,
 #                     "col1",
 #                     "col2",
-#                     "synthetic_10m",
+#                     "synthetic_100m",
 #                     rightDist,
 #                     "col1",
 #                     None,
-#                     "synthetic_10m_cent3_2",
-#                     agg,
-#                     num_synthetic_samples,
-#                     overwrite,
-#                 )
-#             )
-# for leftDist in ["powerlaw3_1"]:
-#     for rightDist in ["powerlaw3_2"]:
-#         for agg in ["count", "sum", "avg"]:
-#             args.append(
-#                 (
-#                     impala_host,
-#                     impala_port,
-#                     "synthetic_10m",
-#                     leftDist,
-#                     "col1",
-#                     "col2",
-#                     "synthetic_10m",
-#                     rightDist,
-#                     "col1",
-#                     None,
-#                     "synthetic_10m_cent3_2",
+#                     "synthetic_100m_cent2",
 #                     agg,
 #                     num_synthetic_samples,
 #                     overwrite,

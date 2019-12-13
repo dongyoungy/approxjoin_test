@@ -220,7 +220,8 @@ def create_table_data(num_rows,
                                                                            8)
     np.random.seed(int(time.time()) + hash_val)
 
-    table_name = "t_{0}n_{1}k_{2}_{3}".format(num_rows, num_keys, type, n)
+    # table_name = "t_{0}n_{1}k_{2}_{3}".format(num_rows, num_keys, type, n)
+    table_name = "t_{0}n_{2}_{3}".format(num_rows, num_keys, type, n)
     data_file = raw_data_path + '/' + "{0}.csv".format(table_name)
 
     if os.path.exists(data_file) and not overwrite:
@@ -232,6 +233,11 @@ def create_table_data(num_rows,
     dummy_col_size = 200
     # write 500k records at a time
     default_batch_size = 500000
+
+    num_keys1 = 1000 * 1000 * 10 # 10M keys
+    num_keys2 = 100000 # 1K keys
+    # num_keys3 = 100000 # 100K keys
+    # num_keys5 = 10000 # 10k keys
 
     # open file
     f = open(data_file, "w")
@@ -249,8 +255,12 @@ def create_table_data(num_rows,
     #  ] * current_batch_size
 
     # set random permutation of keys
-    keymap = np.random.permutation(num_keys) + 1
+    keymap1 = np.random.permutation(num_keys1) + 1
+    keymap2 = np.random.permutation(num_keys2) + 1
+    # keymap3 = np.random.permutation(num_keys3) + 1
+    # keymap5 = np.random.permutation(num_keys5) + 1
     val1_map = np.random.permutation(1000) + 1
+    keymap = keymap1
 
     while remaining > 0:
 
@@ -265,6 +275,21 @@ def create_table_data(num_rows,
         if type == 'uniform':
             keys = np.random.randint(1, num_keys + 1, current_batch_size)
 
+        elif type == 'uniform1':
+            keys = np.random.randint(1, num_keys1 + 1, current_batch_size)
+
+        elif type == 'uniform2':
+            keys = np.random.randint(1, num_keys2 + 1, current_batch_size)
+            keymap = keymap2
+
+        # elif type == 'uniform3':
+        #     keys = np.random.randint(1, num_keys3 + 1, current_batch_size)
+        #     keymap = keymap3
+
+        # elif type == 'uniform5':
+        #     keys = np.random.randint(1, num_keys5 + 1, current_batch_size)
+        #     keymap = keymap5
+
         elif type == 'normal':
             # from: https://stackoverflow.com/questions/37411633/
             # how-to-generate-a-random-normal-distribution-of-integers
@@ -278,8 +303,8 @@ def create_table_data(num_rows,
         elif type == 'normal1':
             # from: https://stackoverflow.com/questions/37411633/
             # how-to-generate-a-random-normal-distribution-of-integers
-            r = num_keys / 2
-            scale = num_keys / 10
+            r = num_keys1 / 2
+            scale = num_keys1 / 5
             keys = ss.truncnorm(a=(-r + 1) / scale, b=r / scale,
                                 scale=scale).rvs(current_batch_size)
             keys = keys + r
@@ -288,39 +313,83 @@ def create_table_data(num_rows,
         elif type == 'normal2':
             # from: https://stackoverflow.com/questions/37411633/
             # how-to-generate-a-random-normal-distribution-of-integers
-            r = num_keys / 2
-            scale = num_keys / 20
+            r = num_keys2 / 2
+            scale = num_keys2 / 5
             keys = ss.truncnorm(a=(-r + 1) / scale, b=r / scale,
                                 scale=scale).rvs(current_batch_size)
             keys = keys + r
             keys = keys.round().astype(int)
+            keymap = keymap2
 
-        elif type == 'powerlaw':
-            alpha = -3.5
+        # elif type == 'normal3':
+        #     # from: https://stackoverflow.com/questions/37411633/
+        #     # how-to-generate-a-random-normal-distribution-of-integers
+        #     r = num_keys3 / 2
+        #     scale = num_keys3 / 5
+        #     keys = ss.truncnorm(a=(-r + 1) / scale, b=r / scale,
+        #                         scale=scale).rvs(current_batch_size)
+        #     keys = keys + r
+        #     keys = keys.round().astype(int)
+        #     keymap = keymap3
+
+        # elif type == 'normal5':
+        #     # from: https://stackoverflow.com/questions/37411633/
+        #     # how-to-generate-a-random-normal-distribution-of-integers
+        #     r = num_keys5 / 2
+        #     scale = num_keys5 / 5
+        #     keys = ss.truncnorm(a=(-r + 1) / scale, b=r / scale,
+        #                         scale=scale).rvs(current_batch_size)
+        #     keys = keys + r
+        #     keys = keys.round().astype(int)
+        #     keymap = keymap5
+
+        elif type == 'powerlaw1':
+            alpha = -1.5
             minv = 1
-            maxv = num_keys
+            maxv = num_keys1
             rand_keys = np.array(np.random.random(size=current_batch_size))
             keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
                     minv**(alpha + 1))**(1 / (alpha + 1))
             keys = [math.floor(k) for k in keys]
 
         elif type == 'powerlaw2':
-            alpha = -3.5
+            alpha = -2
             minv = 1
-            maxv = num_keys
+            maxv = num_keys2
             rand_keys = np.array(np.random.random(size=current_batch_size))
             keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
                     minv**(alpha + 1))**(1 / (alpha + 1))
             keys = [math.floor(k) for k in keys]
+            keymap = keymap2
 
-        elif type == 'powerlaw3':
-            alpha = -3.5
-            minv = 1
-            maxv = num_keys
-            rand_keys = np.array(np.random.random(size=current_batch_size))
-            keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
-                    minv**(alpha + 1))**(1 / (alpha + 1))
-            keys = [math.floor(k) for k in keys]
+        # elif type == 'powerlaw3':
+        #     alpha = -2
+        #     minv = 1
+        #     maxv = num_keys3
+        #     rand_keys = np.array(np.random.random(size=current_batch_size))
+        #     keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+        #             minv**(alpha + 1))**(1 / (alpha + 1))
+        #     keys = [math.floor(k) for k in keys]
+        #     keymap = keymap3
+
+        # elif type == 'powerlaw4':
+        #     alpha = -1.5
+        #     minv = 1
+        #     maxv = num_keys1
+        #     rand_keys = np.array(np.random.random(size=current_batch_size))
+        #     keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+        #             minv**(alpha + 1))**(1 / (alpha + 1))
+        #     keys = [math.floor(k) for k in keys]
+
+        # elif type == 'powerlaw5':
+        #     alpha = -3.5
+        #     minv = 1
+        #     maxv = num_keys5
+        #     rand_keys = np.array(np.random.random(size=current_batch_size))
+        #     keys = ((maxv**(alpha + 1) - minv**(alpha + 1)) * rand_keys +
+        #             minv**(alpha + 1))**(1 / (alpha + 1))
+        #     keys = [math.floor(k) for k in keys]
+        #     keymap = keymap5
 
         else:
             print("Unsupported type: {0}".format(type))

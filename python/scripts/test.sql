@@ -52,8 +52,32 @@ group by query, left_dist, right_dist, p, q
 order by query, left_dist, right_dist, p;
 
 -- metric 2: relative error (avg. percent error)
+select query, left_dist as T1, right_dist as T2, p, q, variance(estimate) as variance, avg(abs((actual - estimate) / actual)) as avg_per_error, stddev(estimate) / avg(actual), count(*)
+from results
+group by query, left_dist, right_dist, p, q
+order by query, left_dist, right_dist, p;
+
+-- metric 2: relative error (avg. percent error)
+select query, left_dist as T1, right_dist as T2, p, q, variance(estimate) as variance, avg(abs((actual - estimate) / actual)) as avg_per_error, stddev(estimate) / avg(actual), count(*)
+from results
+group by query, left_dist, right_dist, p, q
+order by query, p, left_dist, right_dist;
+
 select query, left_dist as T1, right_dist as T2, p, q, variance(estimate) as variance, avg(abs((actual - estimate) / actual)) as avg_per_error, stddev(estimate) / avg(actual)
 from results
+where left_dist like 'powerlaw4%' or right_dist like 'powerlaw4%'
+group by query, left_dist, right_dist, p, q
+order by query, left_dist, right_dist, p;
+
+select query, left_dist as T1, right_dist as T2, p, q, variance(estimate) as variance, avg(abs((actual - estimate) / actual)) as avg_per_error, stddev(estimate) / avg(actual)
+from results
+where left_dist like 'powerlaw5%' or right_dist like 'powerlaw5%'
+group by query, left_dist, right_dist, p, q
+order by query, left_dist, right_dist, p;
+
+select query, left_dist as T1, right_dist as T2, p, q, variance(estimate) as variance, avg(abs((actual - estimate) / actual)) as avg_per_error, stddev(estimate) / avg(actual), count(*)
+from results
+where left_dist like 'powerlaw3%' or right_dist like 'powerlaw3%'
 group by query, left_dist, right_dist, p, q
 order by query, left_dist, right_dist, p;
 
@@ -61,3 +85,7 @@ order by query, left_dist, right_dist, p;
 select *
 from results
 order by query, left_dist, right_dist, idx;
+
+select * from results order by query, left_dist, right_dist, idx;
+
+SELECT COUNT(*) FROM synthetic_100m.uniform3_1 t1 JOIN synthetic_100m.powerlaw3_2 t2 ON t1.col1 = t2.col1

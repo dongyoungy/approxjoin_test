@@ -2459,8 +2459,8 @@ def create_cent_sample_pair_from_impala_old(
     print_time=False,
 ):
     p = 0
-    e1 = 0.01
-    e2 = 0.01
+    e1 = 0.001
+    e2 = 0.001
 
     t1 = datetime.datetime.now()
     # seed the rng

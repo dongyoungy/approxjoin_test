@@ -7,10 +7,17 @@ max_var_args = []
 num_proc = 16
 pool = mp.Pool(processes=num_proc, maxtasksperchild=10)
 
-for dist in ["uniform", "normal", "powerlaw"]:
-    # for dist in ["powerlaw2", "powerlaw3"]:
-    args.append((1000 * 1000, 10 * 1000, dist, 1, False, True))
-    args.append((1000 * 1000, 10 * 1000, dist, 2, False, True))
+for dist in ["uniform1", "uniform2", "normal1", "powerlaw1", "normal2", "powerlaw2"]:
+    args.append((100 * 1000 * 1000, 10 * 1000, dist, 1, False, True))
+    args.append((100 * 1000 * 1000, 10 * 1000, dist, 2, False, True))
+
+# args.append((100 * 1000 * 1000, 10 * 1000, "uniform5", 1, False, True))
+# args.append((100 * 1000 * 1000, 10 * 1000, "uniform5", 2, False, True))
+# args.append((100 * 1000 * 1000, 10 * 1000, "normal5", 1, False, True))
+# args.append((100 * 1000 * 1000, 10 * 1000, "normal5", 2, False, True))
+# args.append((100 * 1000 * 1000, 10 * 1000, "powerlaw5", 1, False, True))
+# args.append((100 * 1000 * 1000, 10 * 1000, "powerlaw5", 2, False, True))
+
 #  args.append((1000 * 1000,  100 * 1000, dist, 2, False, True))
 #  max_var_args.append(
 #  (100 * 1000 * 1000, 10 * 1000 * 1000, dist, False, True))

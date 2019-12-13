@@ -81,17 +81,58 @@ dists.append(("powerlaw3_1", "powerlaw3_2"))
 #     rightDist = d[1]
 
 # evaluate synthetic (cent)
-# for leftDist in ["uniform_1", "normal_1", "powerlaw_1"]:
-#     for rightDist in ["uniform_2", "normal_2", "powerlaw_2"]:
-for leftDist in ["uniform_1", "normal_1"]:
-    for rightDist in ["uniform_2", "normal_2"]:
-        for agg in ["count", "sum", "avg"]:
+# for leftDist in ["uniform1_1", "normal1_1", "powerlaw1_1"]:
+#     for rightDist in ["uniform1_2", "normal1_2", "powerlaw1_2"]:
+idx = 1
+for agg in ["count", "sum", "avg"]:
+    for leftDist in ["t_1_uniform1_1", "t_3_normal1_1", "t_5_powerlaw1_1"]:
+        for rightDist in ["t_1_uniform1_2", "t_3_normal1_2", "t_5_powerlaw1_2"]:
+            host = "cp-" + str(3 + (idx % 12))
+            idx = idx + 1
             synthetic_ours.append(
                 (
-                    impala_host,
+                    host,
                     impala_port,
-                    "synthetic_1m",
-                    "synthetic_1m_cent1",
+                    "synthetic_100m",
+                    "synthetic_100m_cent3",
+                    agg,
+                    leftDist,
+                    rightDist,
+                    num_synthetic_samples,
+                    False,
+                )
+            )
+
+for agg in ["count", "sum", "avg"]:
+    for leftDist in ["t_6_powerlaw2_1"]:
+        for rightDist in ["t_2_uniform2_2", "t_4_normal2_2", "t_6_powerlaw2_2"]:
+            host = "cp-" + str(3 + (idx % 12))
+            idx = idx + 1
+            synthetic_ours.append(
+                (
+                    host,
+                    impala_port,
+                    "synthetic_100m",
+                    "synthetic_100m_cent3",
+                    agg,
+                    leftDist,
+                    rightDist,
+                    num_synthetic_samples,
+                    False,
+                )
+            )
+
+for agg in ["count", "sum", "avg"]:
+    for leftDist in ["t_2_uniform2_1", "t_4_normal2_1"]:
+        for rightDist in ["t_6_powerlaw2_2"]:
+            host = "cp-" + str(3 + (idx % 12))
+            idx = idx + 1
+            synthetic_ours.append(
+                (
+                    host,
+                    impala_port,
+                    "synthetic_100m",
+                    "synthetic_100m_cent3",
                     agg,
                     leftDist,
                     rightDist,
@@ -174,7 +215,7 @@ for agg in ["count", "sum", "avg"]:
             impala_host,
             impala_port,
             "tpch1000g_parquet",
-            "tpch1000g_cent1",
+            "tpch1000g_cent2",
             agg,
             num_tpch_samples,
             False,
